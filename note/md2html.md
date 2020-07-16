@@ -9,7 +9,6 @@
 
 ### monitor shell
 
-###  
 
 ```shell
 #!/bin/bash
