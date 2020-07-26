@@ -11,6 +11,19 @@
 搭建私人博客能学习，拓展技能面，并且可以没有那么多依赖，可以自定义更多，自由发挥
 
 
+**GitHub源码地址：** [Selfpublog](https://github.com/narule/Selfpublog)  
+
+   功能已经写好可以访问 [narule.net/blog](http://narule.net/blog)  查看效果  
+   
+   created html:  
+   ![](https://github.com/narule/Selfpublog/blob/master/blogimage/selfpublogresult.PNG)
+   
+   created blog json info:  
+   ![](https://github.com/narule/Selfpublog/blob/master/blogimage/selfpublog-json.PNG)
+   
+   
+   blog pageIndex:  
+   ![](https://github.com/narule/Selfpublog/blob/master/blogimage/indexfolder.PNG)
 
 ## Object | 功能
 
@@ -27,20 +40,6 @@
    通过shell脚本监控文件夹变化，监控文件夹下markdown文件的修改，自动生成对应的HTML目录和文件
    
    
-   GitHub源码地址：[Selfpublog](https://github.com/narule/Selfpublog)  
-   
-   功能已经写好可以访问 [narule.net/blog](http://narule.net/blog)  查看效果  
-   
-   created html:  
-   ![](https://github.com/narule/Selfpublog/blob/master/blogimage/selfpublogresult.PNG)
-   
-   created blog json info:  
-   ![](https://github.com/narule/Selfpublog/blob/master/blogimage/selfpublog-json.PNG)
-   
-   
-   blog pageIndex:  
-   ![](https://github.com/narule/Selfpublog/blob/master/blogimage/indexfolder.PNG)
-
 ### Request | 要求
 
 1. 不能有较多依赖，尽量简单，并且能够较好地扩展（包括前端js html，后端linux）
