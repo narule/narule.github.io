@@ -32,14 +32,14 @@
    功能已经写好可以访问 [narule.net/blog](http://narule.net/blog)  查看效果  
    
    created html:  
-   ![](https://github.com/narule/Selfpublog/master/blogimage/selfpublogresult.PNG)
+   ![](https://github.com/narule/Selfpublog/blob/master/blogimage/selfpublogresult.PNG)
    
    created blog json info:  
-   ![](https://github.com/narule/Selfpublog/master/blogimage/selfpublog-json.PNG)
+   ![](https://github.com/narule/Selfpublog/blob/master/blogimage/selfpublog-json.PNG)
    
    
    blog pageIndex:  
-   ![](https://github.com/narule/Selfpublog/master/blogimage/indexfolder.PNG)
+   ![](https://github.com/narule/Selfpublog/blob/master/blogimage/indexfolder.PNG)
 
 ### Request | 要求
 
