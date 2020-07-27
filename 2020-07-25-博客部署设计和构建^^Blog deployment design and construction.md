@@ -6,34 +6,33 @@
 
 博客可以用来记笔记或者发布文章，是一种信息载体，我们可以把一些信息放到博客，方便在网络环境查阅。
 
-最近打算搭建一个私人博客，已知网络上的公共博客网站有博客园（国内），github（全球）都挺好用的，本人有在用，博客园和github也有挂的时候（访问不了），情况很少；
+最近打算搭建个人博客，已知网络上的公共博客网站有博客园（国内），github（全球）都挺好用的，本人有在用，博客园和github也有挂的时候（访问不了），情况很少；
 
 搭建私人博客能学习，拓展技能面，并且可以没有那么多依赖，可以自定义更多，自由发挥
-
 
 **GitHub源码地址：** [Selfpublog](https://github.com/narule/Selfpublog)  
 
    功能已经写好可以访问 [narule.net/blog](http://narule.net/blog)  查看效果  
-   
+
    created html:  
    ![](https://github.com/narule/Selfpublog/blob/master/blogimage/selfpublogresult.PNG)
-   
+
    created blog json info:  
    ![](https://github.com/narule/Selfpublog/blob/master/blogimage/selfpublog-json.PNG)
-   
-   
+
+
    blog pageIndex:  
    ![](https://github.com/narule/Selfpublog/blob/master/blogimage/indexfolder.PNG)
 
 ## Object | 功能
 
-1. Blog site, the content is static files
+1. Blog site, the content is static files，all access static,reducing server pressure
 
-   运行环境：Linux 系统
+   博客网站，内容是静态文件，所有访问都是静态，减小服务器压力
 
-2. Operating environment: Linux system 
+2. Operating environment: Linux system, Easier to expand
 
-   博客网站，内容是静态文件
+   运行环境：Linux 系统，更容易扩展
 
 3. Monitor folder changes through shell scripts, monitor the modification of markdown files under the folder, and automatically generate corresponding HTML directories and files
 
@@ -300,7 +299,7 @@ make
 
 ##### use | 使用
 
-markdown2html-conventer
+markdown2html-conventer  /path/filename.md -o  /path/filename.html
 
 ### Bloginfo extraction| 博客信息提取
 
