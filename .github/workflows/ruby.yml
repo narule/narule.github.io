@@ -10,6 +10,7 @@ name: Ruby
 on:
   push:
     branches: [ master ]
+    paths: note/**/*.md
   #pull_request:
     #branches: [ master ]
 
@@ -26,10 +27,10 @@ jobs:
     # uses: ruby/setup-ruby@v1
       uses: ruby/setup-ruby@ec106b438a1ff6ff109590de34ddc62c540232e0
       with:
-        path: note/**/*.md
         ruby-version: 2.6
     - name: Install dependencies
       run: bundle install
     - name: Run tests
-      run: bundle exec rake 
+      run: echo test > temp
+           bundle exec rake 
            echo ${GITHUB_SERVER_URL} > temp
