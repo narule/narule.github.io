@@ -41,7 +41,7 @@ jobs:
         echo ------start-----------
         blogjson=${homedir}/html/json/blog.json
         tempjson=${homedir}/html/json/temp.json
-        jq '."test" = "suc1"' $blogjson > $temp
+        jq '."test" = "suc1"' $blogjson > $tempjson
         echo ----------end---------
         echo jq----
         result=`cat $blogjson | jq '."test" = "suc2"'`
