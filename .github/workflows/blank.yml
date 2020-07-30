@@ -55,5 +55,27 @@ jobs:
         cp $tempjson $blogjson
         echo end ------------
     #- name: get markdown info
+    
+    
+save:
+  runs-on: ubuntu-latest
+    # Steps represent a sequence of tasks that will be executed as part of the job
+  steps:
+    
+  - name: GitHub Push
+    uses: ad-m/github-push-action@v0.6.0
+    with:
+        # Token for the repo. Can be passed in using $\{{ secrets.GITHUB_TOKEN }}
+        github_token: ${{ secrets.NARULE_BLOG }}
+        # Repository name to push. Default or empty value represents current github repository (${GITHUB_REPOSITORY})
+        #repository: # optional, default is 
+        # Destination branch to push changes
+        #branch: # optional, default is master
+        # Determines if force push is used
+        #force: # optional
+        # Determines if --tags is used
+        #tags: # optional
+        # Directory to change to before pushing.
+        #directory: # optional, default is .
       
 
