@@ -50,6 +50,10 @@ jobs:
         result=`cat $blogjson | jq '."test" = "suc2"'`
         echo change-$result
         echo 6---------------
+        cat $tempjson
+        echo cp-------
+        cp $tempjson $blogjson
+        echo end ------------
     #- name: get markdown info
       
 
