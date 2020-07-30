@@ -54,6 +54,8 @@ jobs:
         echo cp-------
         cp $tempjson $blogjson
         echo end ------------
+        git add .
+        git commit -m "action　up"
     #- name: get markdown info
     
     - name: GitHub Push
