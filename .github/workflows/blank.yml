@@ -37,15 +37,15 @@ jobs:
         homedir=`pwd`
         echo home-${homedir}
         list=`find $homedir -name *.json`
-        echo $list
-        echo list-------
         find $homedir -name *.json
+        echo ------start-----------
         blogjson=${homedir}/html/json/blog.json
-        echo $blogjson
+        echo blogjson-${blogjson}----------------
         echo 5-----------------
         tempjson=${homedir}/html/json/temp.json
-        blogjson=` cat $blogjson | jq '."test" = "suc"' `
-        echo $blogjson > $tempjson
+        echo temp-${tempjson}-----------
+        #blogjson=` cat $blogjson | jq '."test" = "suc"' `
+        #echo $blogjson > $tempjson
         echo 6---------------
     #- name: get markdown info
       
