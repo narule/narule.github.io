@@ -8,7 +8,7 @@ on:
   push:
     branches: [ master ]
     paths:   
-      -'note/**/*.md'
+      'note/**/*.md'
   #pull_request:
     #branches: [ master ]
           
