@@ -33,18 +33,24 @@ jobs:
     - name: Run a multi-line script
       run: |
         echo Add other actions to build,
+        echo 1---------
         homedir=`pwd`
+        echo 2-------------
         mpaths=`find /home/runner/work/narule.github.io/ -name blog.json`
         echo $mpaths
+        echo 3----------------
         mpaths=`find /home/runner/work/narule.github.io/ -name *`
         echo $mpaths
+        echo 4-------------
         find /home/runner/work/narule.github.io -name *
         blogjson=${homedir}/html/json/blog.json
         echo $blogjson
+        echo 5-----------------
         tempjson=${homedir}/html/json/temp.json
         #bloginfo=`cat ./html/json/blog.json`
         blogjson=` cat $blogjson | jq '."test" = "suc"' `
         echo $blogjson > $tempjson
+        echo 6---------------
     #- name: get markdown info
       
 
