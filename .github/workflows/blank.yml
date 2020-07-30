@@ -7,8 +7,11 @@ name: CI
 on:
   push:
     branches: [ master ]
+    paths: 
+      -'note/**/*.md'
   pull_request:
     branches: [ master ]
+    
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -30,7 +33,8 @@ jobs:
     - name: Run a multi-line script
       run: |
         echo Add other actions to build,
-        echo test, and deploy your project.
+        bloginfo=`cat ./html/json/blog.json`
+        echo $bloginfo
     #- name: get markdown info
       
 
