@@ -56,12 +56,6 @@ jobs:
         echo end ------------
     #- name: get markdown info
     
-    
-  save:
-    runs-on: ubuntu-latest
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-    
     - name: GitHub Push
       uses: ad-m/github-push-action@v0.6.0
       with:
