@@ -1,0 +1,118 @@
+<h1 id="oracle">Oracle</h1>
+
+<h1 id="表结构操作">表结构操作</h1>
+
+<h2 id="创建表">创建表</h2>
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">create</span> <span class="k">table</span> <span class="n">tableName</span>
+    <span class="p">(</span><span class="n">id</span> <span class="n">varchar2</span><span class="p">(</span><span class="mi">36</span><span class="p">)</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+    <span class="n">name</span> <span class="n">varchar2</span><span class="p">(</span><span class="mi">36</span><span class="p">),</span>
+    <span class="n">age</span> <span class="n">number</span><span class="p">(</span><span class="mi">12</span><span class="p">,</span><span class="mi">2</span><span class="p">),</span>
+    <span class="n">createDate</span> <span class="nb">date</span><span class="p">,</span>
+    <span class="n">modifyDate</span> <span class="nb">date</span><span class="p">);</span>
+
+<span class="c1">--    创建一张表，表名：tableName, </span>
+<span class="c1">--    字段 id 字符串类型 主键，name 字符串类型普通字段，age 数字类型，createDate 创建日期，modifyDate 修改日期'</span>
+</code></pre></div></div>
+
+<h2 id="添加表字段">添加表字段</h2>
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">alter</span> <span class="k">table</span> <span class="n">tableName</span> <span class="k">add</span> <span class="p">(</span><span class="n">address</span> <span class="n">varchar2</span><span class="p">(</span><span class="mi">32</span><span class="p">)</span> <span class="k">default</span> <span class="s1">'无'</span><span class="err">，</span><span class="n">country</span> <span class="n">varchar2</span><span class="p">(</span><span class="mi">32</span><span class="p">)</span> <span class="k">default</span> <span class="s1">''</span><span class="p">);</span>    
+<span class="c1">--给表添加 address 和 country字段 都是32位长度的字符串类型</span>
+</code></pre></div></div>
+
+<h2 id="添加字段描述">添加字段描述</h2>
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">COMMENT</span> <span class="k">ON</span> <span class="k">COLUMN</span> <span class="n">tableName</span><span class="p">.</span><span class="n">address</span> <span class="k">IS</span> <span class="s1">'地址'</span><span class="p">;</span>
+</code></pre></div></div>
+
+<h2 id="删除表字段">删除表字段</h2>
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">alter</span> <span class="k">table</span> <span class="n">tableName</span> <span class="k">drop</span> <span class="k">column</span> <span class="n">country</span><span class="p">;</span>    <span class="c1">--删除表的country字段</span>
+</code></pre></div></div>
+
+<h1 id="表数据操作">表数据操作</h1>
+<p>sql表的设计是很重要的，涉及业务与拓展及后期维护，但是核心应该是：简单</p>
+
+<h2 id="查询表内容">查询表内容</h2>
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">tableName</span><span class="p">;</span>    <span class="c1">--查询表所有内容</span>
+<span class="k">select</span> <span class="n">name</span><span class="p">,</span><span class="n">age</span> <span class="k">from</span> <span class="n">tableName</span><span class="p">;</span>    <span class="c1">--查询表name字段和age字段</span>
+</code></pre></div></div>
+
+<h3 id="子查询">子查询</h3>
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> 
+    <span class="n">a</span><span class="p">.</span><span class="n">name</span><span class="p">,</span> <span class="n">a</span><span class="p">.</span><span class="n">age</span> <span class="p">,</span>   
+    <span class="p">(</span><span class="k">select</span> <span class="n">b</span><span class="p">.</span><span class="n">hobby</span> <span class="k">from</span> <span class="n">kid</span> <span class="n">b</span> <span class="k">where</span> <span class="n">b</span><span class="p">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">a</span><span class="p">.</span><span class="n">name</span> <span class="k">and</span> <span class="n">rownum</span> <span class="o">=</span> <span class="mi">1</span><span class="p">)</span> <span class="n">hobby</span> 
+<span class="k">from</span>  <span class="n">student</span> <span class="n">a</span>  <span class="k">where</span>  <span class="n">a</span><span class="p">.</span><span class="n">id</span> <span class="o">=</span> <span class="s1">'id'</span>
+</code></pre></div></div>
+
+<h2 id="查询总数">查询总数</h2>
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="k">count</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="k">from</span> <span class="n">tableName</span><span class="p">;</span>    <span class="c1">-- 不统计 null</span>
+<span class="k">select</span> <span class="k">count</span><span class="p">(</span><span class="o">*</span><span class="p">)</span> <span class="k">from</span> <span class="n">tableName</span><span class="p">;</span>    <span class="c1">-- 统计 null</span>
+</code></pre></div></div>
+
+<h2 id="按条件查询-where">按条件查询 where</h2>
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="o">*</span> <span class="k">from</span> <span class="n">tableName</span> <span class="k">where</span> <span class="n">age</span> <span class="o">&gt;=</span> <span class="mi">18</span><span class="p">;</span>    <span class="c1">--查询表中age大于18的所有数据</span>
+</code></pre></div></div>
+
+<h2 id="插入数据">插入数据</h2>
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">insert</span> <span class="k">into</span> <span class="n">tableName</span><span class="p">(</span><span class="n">field1</span><span class="p">,</span><span class="n">field2</span><span class="p">)</span> <span class="k">values</span><span class="p">(</span><span class="s1">'value1'</span><span class="p">,</span><span class="s1">'value2'</span><span class="p">);</span>
+</code></pre></div></div>
+
+<h2 id="提交">提交</h2>
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">commit</span>
+</code></pre></div></div>
+
+<h2 id="撤回">撤回</h2>
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">rollback</span>
+</code></pre></div></div>
+
+<h2 id="综合查询">综合查询</h2>
+
+<h3 id="并行查询">并行查询</h3>
+<p>多表查询并集</p>
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="n">T1</span><span class="p">.</span><span class="n">id</span><span class="p">,</span><span class="n">T1</span><span class="p">.</span><span class="n">name</span><span class="p">,</span><span class="n">T1</span><span class="p">.</span><span class="n">age</span> <span class="k">from</span> <span class="n">table1</span> <span class="n">T1</span> <span class="k">where</span> <span class="n">T2</span><span class="p">.</span><span class="n">age</span> <span class="o">&lt;</span> <span class="mi">16</span>
+<span class="k">union</span> 
+<span class="k">select</span> <span class="n">T2</span><span class="p">.</span><span class="n">id</span><span class="p">,</span><span class="n">T2</span><span class="p">.</span><span class="n">name</span><span class="p">,</span><span class="n">T2</span><span class="p">.</span><span class="n">age</span> <span class="k">from</span> <span class="n">table2</span> <span class="n">T2</span> <span class="k">where</span> <span class="n">T2</span><span class="p">.</span><span class="n">age</span> <span class="o">&lt;</span><span class="mi">16</span>
+<span class="k">union</span> 
+<span class="k">select</span> <span class="n">T3</span><span class="p">.</span><span class="n">id</span><span class="p">,</span><span class="n">T3</span><span class="p">.</span><span class="n">name</span><span class="p">,</span><span class="n">T3</span><span class="p">.</span><span class="n">age</span> <span class="k">from</span> <span class="n">table3</span> <span class="n">T3</span> <span class="k">where</span> <span class="n">T3</span><span class="p">.</span><span class="n">age</span> <span class="o">&lt;</span> <span class="mi">16</span>
+<span class="c1">-- 这里 三张不同的表，只需要三张表都有 id,name,age 字段(字符集也要相同，查询结果需要统一类型)，就可以查三张表的并集</span>
+</code></pre></div></div>
+<h3 id="union-all--与-union-区别">union all  与 union 区别</h3>
+<p>两个都是查询多表的并集 ，但是 union 可以重复数据， union 不会重复</p>
+
+<h3 id="to_char-to_nchar">to_char to_nchar</h3>
+<p>字符集不匹配时可用解决方案</p>
+
+<h2 id="使用trim函数去除字符串的空格-">使用trim函数去除字符串的空格’ ‘</h2>
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> <span class="k">trim</span><span class="p">(</span><span class="s1">' ss'</span><span class="p">)</span> <span class="k">from</span> <span class="n">dual</span><span class="p">;</span>
+</code></pre></div></div>
+<p>查询结果为’ss’ 而不是’ ss’</p>
+
+<h2 id="case-用法">case 用法</h2>
+
+<p>有两种用法</p>
+
+<h3 id="比较值">比较值</h3>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> 
+	<span class="n">T</span><span class="p">.</span><span class="n">name</span><span class="p">,</span>
+	<span class="n">T</span><span class="p">.</span><span class="n">area</span><span class="p">,</span>
+	<span class="k">case</span> <span class="n">T</span><span class="p">.</span><span class="n">age</span>
+		<span class="k">when</span> <span class="s1">'18'</span> <span class="k">then</span> <span class="s1">'刚成年'</span>
+		<span class="k">when</span> <span class="s1">'20'</span> <span class="k">then</span> <span class="s1">'刚20'</span>  
+		<span class="k">else</span> <span class="n">T</span><span class="p">.</span><span class="n">age</span>
+	<span class="k">end</span>
+	<span class="k">as</span> <span class="n">age</span><span class="p">,</span>
+	<span class="k">from</span> <span class="n">student</span> <span class="n">T</span>
+</code></pre></div></div>
+
+<h3 id="作为搜索条件">作为搜索条件</h3>
+
+<div class="language-sql highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">select</span> 
+	<span class="n">T</span><span class="p">.</span><span class="n">name</span><span class="p">,</span>
+	<span class="n">T</span><span class="p">.</span><span class="n">area</span><span class="p">,</span>
+	<span class="k">case</span> 
+		<span class="k">when</span> <span class="n">T</span><span class="p">.</span><span class="n">age</span> <span class="o">=</span><span class="s1">'18'</span> <span class="k">then</span> <span class="s1">'刚成年'</span>
+		<span class="k">else</span> <span class="n">T</span><span class="p">.</span><span class="n">age</span>
+	<span class="k">end</span>
+	<span class="k">as</span> <span class="n">age</span><span class="p">,</span>
+	<span class="k">from</span> <span class="n">student</span> <span class="n">T</span>
+</code></pre></div></div>
+

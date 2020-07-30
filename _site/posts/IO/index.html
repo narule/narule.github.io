@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="ie=edge">
+<link href="https://fonts.googleapis.com/css?family=Open+Sans:400,700" rel="stylesheet">
+<!--<link href="https://fonts.googleapis.com/css?family=Nunito+Sans:400,400i,700&display=swap" rel="stylesheet">-->
+<link rel="stylesheet" href="/_site/assets/css/style.css">
+<title>Io</title>
+<!-- Begin Jekyll SEO tag v2.6.1 -->
+<title>Io | narule.github.io</title>
+<meta name="generator" content="Jekyll v4.1.1" />
+<meta property="og:title" content="Io" />
+<meta name="author" content="Narule" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="IO摘要 ~ Java IO IO: Input And Output java 中有IO，即输入与输出，输入input 输出output java 有典型的IO与NIO，常说的IO指典型IO, 阻塞IO， NIO表示非阻塞IO 阻塞： 等待IO任务完成才能继续下一步的操作 非阻塞： 暂不能清晰描述，可以查看网址文章链接：http://ifeve.com/overview/ 这里简单介绍Java中常见的文件读写" />
+<meta property="og:description" content="IO摘要 ~ Java IO IO: Input And Output java 中有IO，即输入与输出，输入input 输出output java 有典型的IO与NIO，常说的IO指典型IO, 阻塞IO， NIO表示非阻塞IO 阻塞： 等待IO任务完成才能继续下一步的操作 非阻塞： 暂不能清晰描述，可以查看网址文章链接：http://ifeve.com/overview/ 这里简单介绍Java中常见的文件读写" />
+<link rel="canonical" href="192.168.50.135/_site/posts/IO/" />
+<meta property="og:url" content="192.168.50.135/_site/posts/IO/" />
+<meta property="og:site_name" content="narule.github.io" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2019-06-23T00:00:00+08:00" />
+<script type="application/ld+json">
+{"description":"IO摘要 ~ Java IO IO: Input And Output java 中有IO，即输入与输出，输入input 输出output java 有典型的IO与NIO，常说的IO指典型IO, 阻塞IO， NIO表示非阻塞IO 阻塞： 等待IO任务完成才能继续下一步的操作 非阻塞： 暂不能清晰描述，可以查看网址文章链接：http://ifeve.com/overview/ 这里简单介绍Java中常见的文件读写","headline":"Io","dateModified":"2019-06-23T00:00:00+08:00","datePublished":"2019-06-23T00:00:00+08:00","url":"192.168.50.135/_site/posts/IO/","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"192.168.50.135/_site/posts/IO/"},"author":{"@type":"Person","name":"Narule"},"@context":"https://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+
+</head>
+<body>
+  <header class="texture-blue">
+    <div class="container"><div class="navbar">
+	<ul>
+		
+		<a href="/_site"><li  >Home</li></a>
+		
+	</ul>
+</div></div><div class="container">
+	<h1>Io</h1>
+	<h4 class="post-description"></h4>
+	<div class="post-date" style="margin-top:20px">
+		Published on Jun 23, 2019
+	</div>
+	<ul class="post-tags"></ul>
+</div>
+</header>
+  <main>
+    <div class="container">
+      <div class="post-container">
+          <p>IO摘要 ~</p>
+
+<h1 id="java-io">Java IO</h1>
+
+<blockquote>
+  <p>IO:  Input And Output</p>
+</blockquote>
+
+<p>java 中有IO，即输入与输出，<strong>输入input 输出output</strong></p>
+
+<p>java 有典型的IO与NIO，常说的IO指典型IO, 阻塞IO， NIO表示非阻塞IO</p>
+
+<p>阻塞： 等待IO任务完成才能继续下一步的操作</p>
+
+<p>非阻塞： 暂不能清晰描述，可以查看网址文章链接：<a href="http://ifeve.com/overview/">http://ifeve.com/overview/</a></p>
+
+<p>这里简单介绍Java中常见的文件读写’’</p>
+
+<p>字节流读写文件：</p>
+
+<h3 id="读文件">读文件</h3>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">readFile</span><span class="o">(</span><span class="nc">String</span> <span class="n">filePath</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+		<span class="nc">File</span> <span class="n">file</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">File</span><span class="o">(</span><span class="n">filePath</span><span class="o">);</span>
+		<span class="k">if</span> <span class="o">(!</span><span class="n">file</span><span class="o">.</span><span class="na">exists</span><span class="o">()</span> <span class="o">||</span> <span class="o">!</span><span class="n">file</span><span class="o">.</span><span class="na">isFile</span><span class="o">())</span> <span class="o">{</span>
+			<span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"file is not exist"</span><span class="o">);</span>
+		<span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+			<span class="nc">FileInputStream</span> <span class="n">fileInputStream</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">FileInputStream</span><span class="o">(</span><span class="n">file</span><span class="o">);</span> <span class="c1">//创建文件输入流</span>
+			<span class="kt">byte</span><span class="o">[]</span> <span class="n">read</span> <span class="o">=</span> <span class="k">new</span> <span class="kt">byte</span><span class="o">[</span><span class="mi">1024</span><span class="o">];</span>
+			<span class="k">while</span> <span class="o">(</span><span class="n">fileInputStream</span><span class="o">.</span><span class="na">read</span><span class="o">(</span><span class="n">read</span><span class="o">)</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span><span class="o">)</span> <span class="o">{</span>
+				<span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"read content:"</span> <span class="o">+</span> <span class="n">read</span><span class="o">);</span>
+			<span class="o">}</span>
+			<span class="n">fileInputStream</span><span class="o">.</span><span class="na">close</span><span class="o">();</span> <span class="c1">// 关闭流 释放资源</span>
+		<span class="o">}</span>
+
+	<span class="o">}</span>
+</code></pre></div></div>
+
+<h3 id="写文件">写文件</h3>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">writeFile</span><span class="o">(</span><span class="kt">byte</span><span class="o">[]</span> <span class="n">content</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+		<span class="nc">File</span> <span class="n">file</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">File</span><span class="o">(</span><span class="s">"D:\\Jser\\data\\test\\writeFile.xml"</span><span class="o">);</span> <span class="c1">//获取写文件的位置</span>
+		<span class="k">if</span> <span class="o">(!</span><span class="n">file</span><span class="o">.</span><span class="na">exists</span><span class="o">())</span>
+			<span class="n">file</span><span class="o">.</span><span class="na">createNewFile</span><span class="o">();</span>
+		<span class="nc">FileOutputStream</span> <span class="n">fileOutputStream</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">FileOutputStream</span><span class="o">(</span><span class="n">file</span><span class="o">);</span> <span class="c1">//创建文件输出流</span>
+		<span class="n">fileOutputStream</span><span class="o">.</span><span class="na">write</span><span class="o">(</span><span class="n">content</span><span class="o">);</span> <span class="c1">// content 表示写入文件的内容 </span>
+		<span class="n">fileOutputStream</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>	<span class="c1">//关闭流 释放资源</span>
+	<span class="o">}</span>
+</code></pre></div></div>
+
+<h3 id="拷贝文件">拷贝文件</h3>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">java.io.File</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.io.FileInputStream</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.io.FileOutputStream</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.io.IOException</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.io.RandomAccessFile</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.nio.ByteBuffer</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.nio.channels.FileChannel</span><span class="o">;</span>
+
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">TestIO</span> <span class="o">{</span>
+    
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">main</span><span class="o">(</span><span class="nc">String</span><span class="o">[]</span> <span class="n">args</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+		<span class="nc">String</span> <span class="n">originFilePath</span> <span class="o">=</span> <span class="s">"D:\\Jser\\data\\git-rep\\jdp\\note\\Program-StudyPlan.md"</span><span class="o">;</span>
+		<span class="nc">String</span> <span class="n">aimFilePath</span> <span class="o">=</span> <span class="s">"D:\\Jser\\data\\test\\aimFile.md"</span><span class="o">;</span>
+		<span class="n">copyFile</span><span class="o">(</span><span class="n">originFilePath</span><span class="o">,</span> <span class="n">aimFilePath</span><span class="o">);</span>
+<span class="c1">//		testRandonAccessFile();</span>
+	<span class="o">}</span>    
+	
+	<span class="cm">/*
+	 * 读文件
+	 */</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">readFile</span><span class="o">(</span><span class="nc">String</span> <span class="n">filePath</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+		<span class="nc">File</span> <span class="n">file</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">File</span><span class="o">(</span><span class="n">filePath</span><span class="o">);</span>
+		<span class="k">if</span> <span class="o">(!</span><span class="n">file</span><span class="o">.</span><span class="na">exists</span><span class="o">()</span> <span class="o">||</span> <span class="o">!</span><span class="n">file</span><span class="o">.</span><span class="na">isFile</span><span class="o">())</span> <span class="o">{</span>
+			<span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"file is not exist"</span><span class="o">);</span>
+		<span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+			<span class="nc">FileInputStream</span> <span class="n">fileInputStream</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">FileInputStream</span><span class="o">(</span><span class="n">file</span><span class="o">);</span>
+			<span class="kt">byte</span><span class="o">[]</span> <span class="n">read</span> <span class="o">=</span> <span class="k">new</span> <span class="kt">byte</span><span class="o">[</span><span class="mi">1024</span><span class="o">];</span>
+			<span class="k">while</span> <span class="o">(</span><span class="n">fileInputStream</span><span class="o">.</span><span class="na">read</span><span class="o">(</span><span class="n">read</span><span class="o">)</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span><span class="o">)</span> <span class="o">{</span>
+				<span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"read content:"</span> <span class="o">+</span> <span class="n">read</span><span class="o">);</span>
+			<span class="o">}</span>
+			<span class="n">fileInputStream</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+		<span class="o">}</span>
+
+	<span class="o">}</span>
+	
+	<span class="cm">/**
+	 * 写文件
+	 * @throws IOException
+	 */</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">writeFile</span><span class="o">(</span><span class="kt">byte</span><span class="o">[]</span> <span class="n">content</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+		<span class="nc">File</span> <span class="n">file</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">File</span><span class="o">(</span><span class="s">"D:\\Jser\\data\\test\\writeFile.xml"</span><span class="o">);</span>
+		<span class="k">if</span> <span class="o">(!</span><span class="n">file</span><span class="o">.</span><span class="na">exists</span><span class="o">())</span>
+			<span class="n">file</span><span class="o">.</span><span class="na">createNewFile</span><span class="o">();</span>
+		<span class="nc">FileOutputStream</span> <span class="n">fileOutputStream</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">FileOutputStream</span><span class="o">(</span><span class="n">file</span><span class="o">);</span>
+		<span class="n">fileOutputStream</span><span class="o">.</span><span class="na">write</span><span class="o">(</span><span class="n">content</span><span class="o">);</span>
+		<span class="n">fileOutputStream</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+	<span class="o">}</span>
+    
+	<span class="cm">/*
+	 * 文件复制 -&gt; 读取一个文件复制到另一个地方
+	 */</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">copyFile</span><span class="o">(</span><span class="nc">String</span> <span class="n">originFilePath</span><span class="o">,</span> <span class="nc">String</span> <span class="n">aimPath</span><span class="o">)</span> <span class="o">{</span>
+		<span class="nc">File</span> <span class="n">originFile</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">File</span><span class="o">(</span><span class="n">originFilePath</span><span class="o">);</span>
+		<span class="k">if</span> <span class="o">(!</span><span class="n">originFile</span><span class="o">.</span><span class="na">exists</span><span class="o">())</span> <span class="o">{</span>
+			<span class="nc">System</span><span class="o">.</span><span class="na">err</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"file is not exists!"</span><span class="o">);</span>
+			<span class="k">return</span><span class="o">;</span>   <span class="c1">//文件不存在</span>
+		<span class="o">}</span>
+		<span class="nc">File</span> <span class="n">aimFile</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">File</span><span class="o">(</span><span class="n">aimPath</span><span class="o">);</span>
+		<span class="nc">FileInputStream</span> <span class="n">fi</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+		<span class="nc">FileOutputStream</span> <span class="n">fo</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+		<span class="k">try</span> <span class="o">{</span>
+			<span class="kt">byte</span><span class="o">[]</span> <span class="n">content</span> <span class="o">=</span> <span class="k">new</span> <span class="kt">byte</span><span class="o">[</span><span class="mi">1024</span><span class="o">];</span>   <span class="c1">//每次读文件内容的字节数组</span>
+			<span class="k">if</span> <span class="o">(!</span><span class="n">aimFile</span><span class="o">.</span><span class="na">exists</span><span class="o">())</span>
+				<span class="n">aimFile</span><span class="o">.</span><span class="na">createNewFile</span><span class="o">();</span>
+            <span class="c1">// 通过路径转化为 输入流 和 输出流</span>
+			<span class="n">fi</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">FileInputStream</span><span class="o">(</span><span class="n">originFile</span><span class="o">);</span>  <span class="c1">//输入流</span>
+			<span class="n">fo</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">FileOutputStream</span><span class="o">(</span><span class="n">aimFile</span><span class="o">);</span>	<span class="c1">//输出流</span>
+			<span class="k">while</span> <span class="o">(</span><span class="n">fi</span><span class="o">.</span><span class="na">read</span><span class="o">(</span><span class="n">content</span><span class="o">)</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span><span class="o">)</span> <span class="o">{</span> <span class="c1">//输入流将数据读取到字节数组，如果返回值为 -1 表示文件已经读完</span>
+				<span class="n">fo</span><span class="o">.</span><span class="na">write</span><span class="o">(</span><span class="n">content</span><span class="o">);</span> <span class="c1">//输出流将数组内容写入文件</span>
+			<span class="o">}</span>
+		<span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">IOException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+			<span class="nc">System</span><span class="o">.</span><span class="na">err</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"read file exception!"</span><span class="o">);</span>
+			<span class="k">try</span> <span class="o">{</span>
+				<span class="c1">// close resources;</span>
+				<span class="k">if</span> <span class="o">(</span><span class="n">fo</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span>
+					<span class="n">fo</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+				<span class="k">if</span> <span class="o">(</span><span class="n">fi</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span>
+					<span class="n">fi</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+			<span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">IOException</span> <span class="n">es</span><span class="o">)</span> <span class="o">{</span>
+				<span class="c1">// TODO Auto-generated catch block</span>
+				<span class="n">es</span><span class="o">.</span><span class="na">printStackTrace</span><span class="o">();</span>
+			<span class="o">}</span>
+		<span class="o">}</span> <span class="k">finally</span> <span class="o">{</span>
+			<span class="k">try</span> <span class="o">{</span>
+				<span class="k">if</span> <span class="o">(</span><span class="n">fo</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span>
+					<span class="n">fo</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+				<span class="k">if</span> <span class="o">(</span><span class="n">fi</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span>
+					<span class="n">fi</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+			<span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">IOException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+				<span class="c1">// TODO Auto-generated catch block</span>
+				<span class="n">e</span><span class="o">.</span><span class="na">printStackTrace</span><span class="o">();</span>
+			<span class="o">}</span>
+		<span class="o">}</span>
+	<span class="o">}</span>
+    
+    <span class="cm">/*
+    * java 涉及NIO的 RandomAccessFile 类
+    */</span>
+	<span class="kd">private</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">testRandonAccessFile</span><span class="o">()</span> <span class="kd">throws</span> <span class="nc">IOException</span> <span class="o">{</span>
+		<span class="nc">RandomAccessFile</span> <span class="n">aFile</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">RandomAccessFile</span><span class="o">(</span><span class="s">"D:\\Jser\\data\\git-rep\\config\\maven\\settings.xml"</span><span class="o">,</span> <span class="s">"rw"</span><span class="o">);</span>
+		<span class="nc">FileChannel</span> <span class="n">channel</span> <span class="o">=</span> <span class="n">aFile</span><span class="o">.</span><span class="na">getChannel</span><span class="o">();</span>
+		<span class="nc">File</span> <span class="n">file</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">File</span><span class="o">(</span><span class="s">"D:\\Jser\\data\\test\\creatFile.xml"</span><span class="o">);</span>
+		<span class="k">if</span> <span class="o">(!</span><span class="n">file</span><span class="o">.</span><span class="na">getParentFile</span><span class="o">().</span><span class="na">exists</span><span class="o">())</span>
+			<span class="n">file</span><span class="o">.</span><span class="na">getParentFile</span><span class="o">().</span><span class="na">mkdirs</span><span class="o">();</span>
+
+		<span class="k">if</span> <span class="o">(!</span><span class="n">file</span><span class="o">.</span><span class="na">isFile</span><span class="o">())</span> <span class="o">{</span>
+			<span class="nc">System</span><span class="o">.</span><span class="na">err</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"file is not exist!"</span><span class="o">);</span>
+			<span class="nc">System</span><span class="o">.</span><span class="na">exit</span><span class="o">(</span><span class="mi">0</span><span class="o">);</span>
+		<span class="o">}</span>
+		<span class="k">if</span> <span class="o">(!</span><span class="n">file</span><span class="o">.</span><span class="na">exists</span><span class="o">())</span>
+			<span class="n">file</span><span class="o">.</span><span class="na">createNewFile</span><span class="o">();</span>
+
+		<span class="nc">FileOutputStream</span> <span class="n">newFile</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">FileOutputStream</span><span class="o">(</span><span class="n">file</span><span class="o">);</span>
+		<span class="nc">ByteBuffer</span> <span class="n">buffer</span> <span class="o">=</span> <span class="nc">ByteBuffer</span><span class="o">.</span><span class="na">allocate</span><span class="o">(</span><span class="mi">1024</span><span class="o">);</span>
+		<span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+		<span class="k">while</span> <span class="o">(</span><span class="n">channel</span><span class="o">.</span><span class="na">read</span><span class="o">(</span><span class="n">buffer</span><span class="o">)</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span><span class="o">)</span> <span class="o">{</span>
+			<span class="n">i</span><span class="o">++;</span>
+			<span class="n">buffer</span><span class="o">.</span><span class="na">flip</span><span class="o">();</span>
+			<span class="k">while</span> <span class="o">(</span><span class="n">buffer</span><span class="o">.</span><span class="na">hasRemaining</span><span class="o">())</span> <span class="o">{</span>
+				<span class="n">newFile</span><span class="o">.</span><span class="na">write</span><span class="o">(</span><span class="n">buffer</span><span class="o">.</span><span class="na">get</span><span class="o">());</span>
+			<span class="o">}</span>
+			<span class="n">buffer</span><span class="o">.</span><span class="na">clear</span><span class="o">();</span>
+		<span class="o">}</span>
+		<span class="n">aFile</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+		<span class="n">newFile</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+		<span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"文件读取次数："</span> <span class="o">+</span> <span class="n">i</span><span class="o">);</span>
+	<span class="o">}</span>
+
+<span class="o">}</span>
+</code></pre></div></div>
+
+
+      </div>
+
+        <!-- Configure Disqus --></div>
+  </main></body>
+</html>

@@ -1,10 +1,16 @@
 ---
 layout: post
+title: "Blog Design and construction"
+date:   2020-07-23 21:03:36 +0530
+description: Convert markdown note files to blogs, and automatically update blog information
 ---
 
+搭建博客能学习不少新知识，自定义功能，下面说说如何设计构建''
 
 
-# Blog deployment design and construction | 博客部署设计和构建
+
+
+Blog deployment design and construction | 博客部署设计和构建
 
 >  Convert markdown note files to blogs, and automatically update blog information
 >
