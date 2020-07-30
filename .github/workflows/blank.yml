@@ -46,7 +46,7 @@ jobs:
         result=`jq '."test" = "suc1"' $blogjson`
         echo $result > $tempjson
         ctime=`date`
-        result=`jq '."ctime" = "${ctime}"' $tempjson`
+        result=`jq '."ctime" = "'${ctime}'"' $tempjson`
         echo $result > $tempjson
         echo ----------end---------
         echo jq----
@@ -104,5 +104,15 @@ jobs:
         #tags: # optional
         # Directory to change to before pushing.
         #directory: # optional, default is .
+    - name: Get All Changed Files
+      uses: jitterbit/get-changed-files@v1
+      with:
+      # GitHub token for GitHub API requests. Users shouldn't need to set this themselves.
+
+        token:  ${{ github.token }}
+        # Format of the steps output context. Can be 'space-delimited', 'csv', or 'json'.
+
+        format: space-delimited  
+    
     
 
