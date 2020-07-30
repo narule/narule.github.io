@@ -7,11 +7,11 @@ name: CI
 on:
   push:
     branches: [ master ]
-    #paths:   
-     # -'note/**/*.md'
+    paths:   
+      -'note/**/*.md'
   #pull_request:
     #branches: [ master ]
-    
+          
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -30,7 +30,7 @@ jobs:
       run: echo Hello, world!
 
     # Runs a set of commands using the runners shell
-    - name: Run a multi-line script
+    - name: Run a multi-line script 
       run: |
         echo Add other actions to build,
         
@@ -60,6 +60,30 @@ jobs:
         git add .
         git commit -m "action　up"
     #- name: get markdown info
+    - name: Dump GitHub context
+      env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+      run: echo "$GITHUB_CONTEXT"
+    - name: Dump job context
+      env:
+          JOB_CONTEXT: ${{ toJson(job) }}
+      run: echo "$JOB_CONTEXT"
+    - name: Dump steps context
+      env:
+         STEPS_CONTEXT: ${{ toJson(steps) }}
+      run: echo "$STEPS_CONTEXT"
+    - name: Dump runner context
+      env:
+         RUNNER_CONTEXT: ${{ toJson(runner) }}
+      run: echo "$RUNNER_CONTEXT"
+    - name: Dump strategy context
+      env:
+          STRATEGY_CONTEXT: ${{ toJson(strategy) }}
+      run: echo "$STRATEGY_CONTEXT"
+    - name: Dump matrix context
+      env:
+          MATRIX_CONTEXT: ${{ toJson(matrix) }}
+      run: echo "$MATRIX_CONTEXT"
     
     - name: GitHub Push
       uses: ad-m/github-push-action@v0.6.0
@@ -76,5 +100,5 @@ jobs:
         #tags: # optional
         # Directory to change to before pushing.
         #directory: # optional, default is .
-      
+    
 
