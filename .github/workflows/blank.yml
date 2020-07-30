@@ -41,22 +41,10 @@ jobs:
         echo ------start-----------
         blogjson=${homedir}/html/json/blog.json
         tempjson=${homedir}/html/json/temp.json
-        jq '."test" = "suc1"' $blogjson
-        echo get result 
-        result=`jq '."test" = "suc1"' $blogjson`
-        echo $result > $tempjson
-        ctime=`date +%Y-%m-%d`
-        result=`jq '."ctime" = "'${ctime}'"' $tempjson`
-        echo $result > $tempjson
+        ctime=`date +%Y-%m-%d--%H:%M:%S`
+        result=`jq '."utime" = "'$ctime'"' $blogjson`
+        echo $result > $blogjson
         echo ----------end---------
-        echo jq----
-        result=`cat $blogjson | jq '."test" = "suc2"'`
-        echo change-$result
-        echo 6---------------
-        cat $tempjson
-        echo cp-------
-        cp $tempjson $blogjson
-        echo end ------------
         git config --global user.email ${{ secrets.EMAIL }}
         git config --global user.name ${{ secrets.USERNAME }}
 
