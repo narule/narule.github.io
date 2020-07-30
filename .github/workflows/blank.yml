@@ -34,6 +34,7 @@ jobs:
       run: |
         echo Add other actions to build,
         homedir=`pwd`
+        ll
         blogjson=${homedir}/html/json/blog.json
         echo $blogjson
         tempjson=${homedir}/html/json/temp.json
