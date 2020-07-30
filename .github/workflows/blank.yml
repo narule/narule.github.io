@@ -33,6 +33,7 @@ jobs:
     - name: Run a multi-line script
       run: |
         echo Add other actions to build,
+        pwd
         #bloginfo=`cat ./html/json/blog.json`
         echo bloginfo
     #- name: get markdown info
