@@ -54,6 +54,9 @@ jobs:
         echo cp-------
         cp $tempjson $blogjson
         echo end ------------
+        git config --global user.email ${{ secrets.EMAIL }}
+        git config --global user.name ${{ secrets.USERNAME }}
+
         git add .
         git commit -m "action　up"
     #- name: get markdown info
