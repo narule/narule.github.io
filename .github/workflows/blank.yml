@@ -45,7 +45,7 @@ jobs:
         echo get result 
         result=`jq '."test" = "suc1"' $blogjson`
         echo $result > $tempjson
-        ctime=`date`
+        ctime=`date +%Y-%m-%d`
         result=`jq '."ctime" = "'${ctime}'"' $tempjson`
         echo $result > $tempjson
         echo ----------end---------
