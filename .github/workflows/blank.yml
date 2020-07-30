@@ -44,8 +44,23 @@ jobs:
         echo 5-----------------
         tempjson=${homedir}/html/json/temp.json
         echo temp-${tempjson}-----------
-        #blogjson=` cat $blogjson | jq '."test" = "suc"' `
-        #echo $blogjson > $tempjson
+        echo blogjson-----------
+        cat $blogjson
+        echo tempjson--------
+        cat $tempjson
+        echo jq----
+        blogjson=`cat $blogjson`
+        echo $blogjson
+        blogjson=`jq . $blogjson`
+        echo jq-$blogjson
+        result=`jq '."test" = "suc"' $blogjson`
+        echo result-$result 
+        echo -----getresult--------------
+        echo $result > $tempjson
+        echo "result -> tempjson"
+        echo -----------res------------temp---------
+        blogjson=` cat $blogjson | jq '."test" = "suc"' `
+        echo $blogjson > $tempjson
         echo 6---------------
     #- name: get markdown info
       
