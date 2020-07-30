@@ -33,9 +33,13 @@ jobs:
     - name: Run a multi-line script
       run: |
         echo Add other actions to build,
-        pwd
+        homedir=`pwd`
+        blogjson=${homedir}/html/json/blog.json
+        echo $blogjson
+        tempjson=${homedir}/html/json/temp.json
         #bloginfo=`cat ./html/json/blog.json`
-        echo bloginfo
+        blogjson=` cat $blogjson | jq '."test" = "suc"' `
+        echo $blogjson > $tempjson
     #- name: get markdown info
       
 
