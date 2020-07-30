@@ -41,6 +41,9 @@ jobs:
         echo 3----------------
         mpaths=`find /home/runner/work/narule.github.io/ -name *`
         echo $mpaths
+        echo 3t----------------
+        mpaths=`find /home/runner/work/narule.github.io/narule.github.io/ -name *`
+        echo $mpaths
         echo 4-------------
         find /home/runner/work/narule.github.io -name *
         blogjson=${homedir}/html/json/blog.json
