@@ -13,3 +13,4 @@ jobs:
         with:
           # The Jekyll website source directory
           jekyll_src: ./# optional
+          github_token: ${{ secrets.NARULE_BLOG }}  
