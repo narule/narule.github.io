@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
-gem "texture"
+#gem "texture"
 Gem::Specification.new do |spec|
   spec.name          = "texture"
   spec.version       = "0.5"
-  spec.authors       = ["Samarjeet"]
-  spec.email         = ["samarsault@gmail.com"]
+  spec.authors       = ["narule"]
+  spec.email         = ["narule.net@gmail.com"]
 
   spec.summary       = "A configurable jekyll theme for simply beautiful blogs."
   spec.homepage      = "https://github.com/thelehhman/texture"
