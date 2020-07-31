@@ -1,0 +1,4 @@
+name: jekyll
+
+on:
+  push
