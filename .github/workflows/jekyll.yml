@@ -7,15 +7,9 @@ on:
 
 jobs:
   github-pages:
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name: install jekyll
-        run: |
-          gem install jekyll bundler
-          bundle install
-      - uses: helaili/jekyll-action@2.0.3
-        with:
-          jekyll_src: ./ 
+      - uses: helaili/jekyll-action@2.0.1
         env:
           JEKYLL_PAT: ${{ secrets.NARULE_BLOG }}
