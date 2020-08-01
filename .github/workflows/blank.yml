@@ -8,7 +8,7 @@ on:
   push:
     branches: [ master ]
     paths:   
-      - 'note/**/*.md'
+      - '**/*.md'
   #pull_request:
     #branches: [ master ]
           
@@ -53,7 +53,8 @@ jobs:
         jekyll b
         #env:
         #  JEKYLL_PAT: ${{ secrets.NARULE_BLOG }}
-        git add .
+        git add ./_site
+        git add ./html
         git commit -m "action　up"
     #- name: get markdown info
     - name: Dump GitHub context
