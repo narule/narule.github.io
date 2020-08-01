@@ -1,7 +1,7 @@
 
 Gem::Specification.new do |spec|
   spec.name          = "texture"
-  spec.version       = "0.5"
+  #spec.version       = "0.5"
   spec.authors       = ["narule"]
   spec.email         = ["narule.net@gmail.com"]
 
