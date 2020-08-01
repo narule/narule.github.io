@@ -15,8 +15,8 @@ jobs:
         
       - name: install
         run: |
-          gem install texture
-          gem install bundler
+          sudo gem install texture
+          sudo gem install bundler
       - uses: helaili/jekyll-action@2.0.1
         env:
           JEKYLL_PAT: ${{ secrets.NARULE_BLOG }}
