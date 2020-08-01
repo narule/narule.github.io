@@ -18,6 +18,10 @@ jobs:
           sudo gem install texture
           sudo gem install bundler
           sudo bundler
-      - uses: helaili/jekyll-action@2.0.1
+      - name: Jekyll Actions
+        uses: helaili/jekyll-action@2.0.3
+        with:
+          # The Jekyll website source directory
+          jekyll_src: ./
         env:
           JEKYLL_PAT: ${{ secrets.NARULE_BLOG }}
