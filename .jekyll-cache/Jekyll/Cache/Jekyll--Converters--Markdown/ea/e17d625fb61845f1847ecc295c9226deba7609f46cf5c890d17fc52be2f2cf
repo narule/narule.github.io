@@ -1,0 +1,69 @@
+I"�<h2 id="fail2ban-防ssh暴力破解">fail2ban 防ssh暴力破解</h2>
+
+<p>fail2ban 出现主要针对 暴力访问服务器而设计</p>
+
+<p>原理是通过linux 服务器上的访问日志，通过正则表达式，获取访问信息</p>
+
+<p>如ssh登录防暴力破解，通过正则ssh访问日志记录，获取暴利访问ip,家ip 通过防火墙隔离。’</p>
+
+<h3 id="安装">安装</h3>
+
+<p>官网 <a href="http://fail2ban.org" target="_blank">fail2ban</a></p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># centos7</span>
+wget <span class="s2">"https://github.com/fail2ban/fail2ban/archive/0.9.4.tar.gz"</span>
+ll
+<span class="nb">tar</span> <span class="nt">-zxvf</span> 0.9.4.tar.gz
+<span class="nb">cd </span>fail2ban-0.9.4
+python setup.py <span class="nb">install</span> <span class="c">#注意，这里需要python 2.6以上</span>
+<span class="nb">cp </span>files/redhat-initd /etc/init.d/fail2ban <span class="c"># 启动文件添加到init.d目录</span>
+chkconfig <span class="nt">--add</span> fail2ban <span class="c">#添加启动软链接</span>
+</code></pre></div></div>
+
+<h3 id="配置">配置</h3>
+
+<p>ssh 防止暴力登录</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">cp</span> /etc/fail2ban/jail.conf /etc/fail2ban/jail.local <span class="c">#添加本地配置文件</span>
+vim /etc/fail2ban/jail.local  <span class="c"># 自动以配置</span>
+</code></pre></div></div>
+
+<p>配置内容</p>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># 禁止ip方式</span>
+banaction <span class="o">=</span> firewallcmd-ipset  
+banaction_allports <span class="o">=</span> firewallcmd-allports
+<span class="c">#centos7防火墙默认是 firewalld 如果是iptables,就改为iptables  目录：action.d/</span>
+
+<span class="c"># sshd 配置</span>
+<span class="o">[</span>sshd]
+enabled <span class="o">=</span> <span class="nb">true</span>  <span class="c">#启动</span>
+filter <span class="o">=</span> sshd <span class="c">#过滤规则  目录：filter.d/</span>
+port    <span class="o">=</span> 22 <span class="c">#拦截端口</span>
+<span class="c">#logpath = %(sshd_log)s </span>
+logpath <span class="o">=</span> /var/log/secure  <span class="c">#监控日志</span>
+backend <span class="o">=</span> %<span class="o">(</span>sshd_backend<span class="o">)</span>s 
+action <span class="o">=</span> %<span class="o">(</span>action_<span class="o">)</span>s <span class="c">#封禁ip的动作</span>
+bantime  <span class="o">=</span> 172800 <span class="c">#ip封禁时间</span>
+maxretry <span class="o">=</span> 3  <span class="c"># 阈值  --同一个ip登录失败多少次后封禁ip</span>
+</code></pre></div></div>
+
+<h3 id="启动">启动</h3>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>fail2ban-client <span class="nt">-d</span> <span class="c">#检查 jail.local 配置是否正确</span>
+systemctl start fail2ban <span class="c">#启动</span>
+</code></pre></div></div>
+
+<h3 id="查看">查看</h3>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>systemctl status fail2ban <span class="c"># 查看启动状态 running 为成功</span>
+fail2ban-client status <span class="c"># 查看状态</span>
+fail2ban-client status sshd <span class="c">#查看sshd 状态</span>
+<span class="nb">tail</span> <span class="nt">-f</span> /var/log/fail2ban.log <span class="c">#查看fail2ban监控日志</span>
+</code></pre></div></div>
+<p><img src="https://img2020.cnblogs.com/blog/1436620/202006/1436620-20200603210007897-1628430758.png" alt="" /></p>
+
+<p><img src="https://img2020.cnblogs.com/blog/1436620/202006/1436620-20200603210319904-1883405565.png" alt="" /></p>
+
+<p><img src="https://img2020.cnblogs.com/blog/1436620/202006/1436620-20200603205714946-765327654.png" alt="" /></p>
+:ET

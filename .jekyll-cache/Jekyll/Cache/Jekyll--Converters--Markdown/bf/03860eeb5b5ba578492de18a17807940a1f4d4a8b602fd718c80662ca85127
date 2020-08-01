@@ -1,0 +1,701 @@
+I"q�<h1 id="serverconfig">ServerConfig</h1>
+
+<blockquote>
+  <p>SpringCloud 组件，ServerConfig 是配置服务中心，组件，用于统一管理项目配置</p>
+</blockquote>
+
+<h2 id="原理">原理</h2>
+
+<h3 id="读取配置文件内容到服务中心">读取配置文件内容到服务中心</h3>
+<p>通过启动一个springboot服务（server-config），配置好git仓库地址（也可以svn或者其他），通过配置好的文件地址，访问配置文件，将配置读取到服务中心，并且文件内容修改后，可以实时刷新。</p>
+
+<h3 id="客户端到配置中心读配置内容">客户端到配置中心读配置内容</h3>
+<p>其他微服务访问配置不需要访问git，只需要通过访问ServerConfig读取配置，能到达统一配置的目的。</p>
+
+<h2 id="搭建">搭建</h2>
+
+<blockquote>
+  <p>前提概要，本搭建使用ide:Spring Tool Suite 4</p>
+
+  <p>Version: 4.3.0.RELEASE
+Build Id: 201906200901</p>
+
+  <p>安装好maven 3.6.3，并配置好网络通畅的maven仓库地址，有些国外仓库地址可能网速不好，下载依赖慢。</p>
+
+  <p>国内镜像仓库反而更快 https://www.cnblogs.com/Narule/p/12595960.html</p>
+</blockquote>
+
+<h2 id="server">Server</h2>
+
+<p>file  -&gt; new -&gt; Spring Starter Project
+<img src="https://img2020.cnblogs.com/blog/1436620/202003/1436620-20200330000626226-533036850.png" alt="" /></p>
+
+<h3 id="pom依赖">pom依赖</h3>
+
+<div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
+<span class="nt">&lt;project</span> <span class="na">xmlns=</span><span class="s">"http://maven.apache.org/POM/4.0.0"</span> <span class="na">xmlns:xsi=</span><span class="s">"http://www.w3.org/2001/XMLSchema-instance"</span>
+	<span class="na">xsi:schemaLocation=</span><span class="s">"http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd"</span><span class="nt">&gt;</span>
+	<span class="nt">&lt;modelVersion&gt;</span>4.0.0<span class="nt">&lt;/modelVersion&gt;</span>
+	<span class="nt">&lt;parent&gt;</span>
+		<span class="nt">&lt;groupId&gt;</span>org.springframework.boot<span class="nt">&lt;/groupId&gt;</span>
+		<span class="nt">&lt;artifactId&gt;</span>spring-boot-starter-parent<span class="nt">&lt;/artifactId&gt;</span>
+		<span class="nt">&lt;version&gt;</span>2.2.5.RELEASE<span class="nt">&lt;/version&gt;</span>
+		<span class="nt">&lt;relativePath/&gt;</span> <span class="c">&lt;!-- lookup parent from repository --&gt;</span>
+	<span class="nt">&lt;/parent&gt;</span>
+	<span class="nt">&lt;groupId&gt;</span>com.wunanyu<span class="nt">&lt;/groupId&gt;</span>
+	<span class="nt">&lt;artifactId&gt;</span>Config<span class="nt">&lt;/artifactId&gt;</span>
+	<span class="nt">&lt;version&gt;</span>0.0.1-SNAPSHOT<span class="nt">&lt;/version&gt;</span>
+	<span class="nt">&lt;name&gt;</span>Config<span class="nt">&lt;/name&gt;</span>
+	<span class="nt">&lt;description&gt;</span>Demo project for Spring Boot<span class="nt">&lt;/description&gt;</span>
+
+	<span class="nt">&lt;properties&gt;</span>
+		<span class="nt">&lt;java.version&gt;</span>1.8<span class="nt">&lt;/java.version&gt;</span>
+		<span class="nt">&lt;spring-cloud.version&gt;</span>Hoxton.SR3<span class="nt">&lt;/spring-cloud.version&gt;</span>
+	<span class="nt">&lt;/properties&gt;</span>
+
+	<span class="nt">&lt;dependencies&gt;</span>
+		<span class="nt">&lt;dependency&gt;</span>
+			<span class="nt">&lt;groupId&gt;</span>org.springframework.cloud<span class="nt">&lt;/groupId&gt;</span>
+			<span class="nt">&lt;artifactId&gt;</span>spring-cloud-config-server<span class="nt">&lt;/artifactId&gt;</span>
+		<span class="nt">&lt;/dependency&gt;</span>
+
+		<span class="nt">&lt;dependency&gt;</span>
+			<span class="nt">&lt;groupId&gt;</span>org.springframework.boot<span class="nt">&lt;/groupId&gt;</span>
+			<span class="nt">&lt;artifactId&gt;</span>spring-boot-starter-test<span class="nt">&lt;/artifactId&gt;</span>
+			<span class="nt">&lt;scope&gt;</span>test<span class="nt">&lt;/scope&gt;</span>
+			<span class="nt">&lt;exclusions&gt;</span>
+				<span class="nt">&lt;exclusion&gt;</span>
+					<span class="nt">&lt;groupId&gt;</span>org.junit.vintage<span class="nt">&lt;/groupId&gt;</span>
+					<span class="nt">&lt;artifactId&gt;</span>junit-vintage-engine<span class="nt">&lt;/artifactId&gt;</span>
+				<span class="nt">&lt;/exclusion&gt;</span>
+			<span class="nt">&lt;/exclusions&gt;</span>
+		<span class="nt">&lt;/dependency&gt;</span>
+	<span class="nt">&lt;/dependencies&gt;</span>
+
+	<span class="nt">&lt;dependencyManagement&gt;</span>
+		<span class="nt">&lt;dependencies&gt;</span>
+			<span class="nt">&lt;dependency&gt;</span>
+				<span class="nt">&lt;groupId&gt;</span>org.springframework.cloud<span class="nt">&lt;/groupId&gt;</span>
+				<span class="nt">&lt;artifactId&gt;</span>spring-cloud-dependencies<span class="nt">&lt;/artifactId&gt;</span>
+				<span class="nt">&lt;version&gt;</span>${spring-cloud.version}<span class="nt">&lt;/version&gt;</span>
+				<span class="nt">&lt;type&gt;</span>pom<span class="nt">&lt;/type&gt;</span>
+				<span class="nt">&lt;scope&gt;</span>import<span class="nt">&lt;/scope&gt;</span>
+			<span class="nt">&lt;/dependency&gt;</span>
+		<span class="nt">&lt;/dependencies&gt;</span>
+	<span class="nt">&lt;/dependencyManagement&gt;</span>
+
+	<span class="nt">&lt;build&gt;</span>
+		<span class="nt">&lt;plugins&gt;</span>
+			<span class="nt">&lt;plugin&gt;</span>
+				<span class="nt">&lt;groupId&gt;</span>org.springframework.boot<span class="nt">&lt;/groupId&gt;</span>
+				<span class="nt">&lt;artifactId&gt;</span>spring-boot-maven-plugin<span class="nt">&lt;/artifactId&gt;</span>
+			<span class="nt">&lt;/plugin&gt;</span>
+		<span class="nt">&lt;/plugins&gt;</span>
+	<span class="nt">&lt;/build&gt;</span>
+
+<span class="nt">&lt;/project&gt;</span>
+
+</code></pre></div></div>
+
+<h3 id="配置文件">配置文件</h3>
+
+<h4 id="applicationyml">application.yml</h4>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="na">server</span><span class="pi">:</span>
+  <span class="na">port</span><span class="pi">:</span> <span class="m">8888</span>  <span class="c1">#	服务端口号</span>
+<span class="na">spring</span><span class="pi">:</span>
+  <span class="na">application</span><span class="pi">:</span>
+    <span class="na">name</span><span class="pi">:</span> <span class="s">server-config</span>  <span class="c1">#服务名</span>
+  <span class="na">cloud</span><span class="pi">:</span>
+    <span class="na">config</span><span class="pi">:</span>
+      <span class="na">server</span><span class="pi">:</span>
+        <span class="na">git</span><span class="pi">:</span>
+          <span class="na">uri</span><span class="pi">:</span> <span class="s">/usr/data/git/cloud/config</span>  <span class="c1">#linux配置文件地址</span>
+          <span class="c1"># 这里可以配置文件路径，也可以配置服务器路径，windows需要添加//  </span>
+          <span class="c1"># 如uri: file://${user.home}/config-repo</span>
+          <span class="c1"># github  uri：https：//github.com/repo</span>
+
+<span class="c1">#</span>
+<span class="c1">#logging:</span>
+<span class="c1">#config: src/main/resources/logback-spring.xml</span>
+<span class="na">log</span><span class="pi">:</span>
+  <span class="na">path</span><span class="pi">:</span> <span class="s">log</span>  <span class="c1">#日志路径</span>
+</code></pre></div></div>
+
+<p>更详细可以见https://www.cnblogs.com/hellxz/p/9306507.html</p>
+
+<h4 id="logback-springxml">logback-spring.xml</h4>
+
+<blockquote>
+  <p>日志打印的配置文件已经配置好，可以直接用，这里不介绍logback细节，不是本次重点</p>
+</blockquote>
+
+<div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
+<span class="c">&lt;!--  
+配置说明
+
+%6 表示字段最小长度为6，格式右对齐 		[	 右对齐 ]
+%-64 表示最小长度64，并且左对齐		[左对齐	]
+%6.32 表示最小长度6，最大长度32		[左对齐	]
+--&gt;</span>
+<span class="nt">&lt;configuration</span> <span class="na">scan=</span><span class="s">"true"</span> <span class="na">scanPeriod=</span><span class="s">"60 seconds"</span>
+	<span class="na">debug=</span><span class="s">"false"</span><span class="nt">&gt;</span>
+	<span class="c">&lt;!-- 默认读取application.yml 配置 --&gt;</span>
+	<span class="nt">&lt;springProperty</span> <span class="na">scope=</span><span class="s">"contex"</span> <span class="na">name=</span><span class="s">"app"</span> <span class="na">source=</span><span class="s">"spring.application.name"</span><span class="nt">&gt;&lt;/springProperty&gt;</span>
+	<span class="nt">&lt;springProperty</span> <span class="na">scope=</span><span class="s">"contex"</span> <span class="na">name=</span><span class="s">"log.path"</span> <span class="na">source=</span><span class="s">"log.path"</span><span class="nt">&gt;&lt;/springProperty&gt;</span>
+ 	<span class="c">&lt;!-- &lt;property name="log.path" value="log" /&gt; --&gt;</span>
+	<span class="nt">&lt;property</span> <span class="na">name=</span><span class="s">"LOG_PATTERN"</span>
+		<span class="na">value=</span><span class="s">"%d -%magenta(%6(${PID:- }))- [%-5(${app})] [%6thread] %-5level %cyan(%-64logger{128}) - %msg%n"</span> <span class="nt">/&gt;</span>
+		<span class="c">&lt;!-- 时间	进程						 线程 					日志级别 				输出对象 			消息内容 --&gt;</span>
+		<span class="c">&lt;!-- 彩色 --&gt;</span>
+		<span class="c">&lt;!-- &lt;property name="LOG_PATTERN" value="%d -%magenta(${PID:- })- [%16thread] %customcolor(%-5level) %cyan(%-64logger{128}) - %msg%n" /&gt; --&gt;</span>
+		<span class="c">&lt;!-- 黑白日志 --&gt;</span>
+		<span class="c">&lt;!-- &lt;property name="LOG_PATTERN" value="%d -%6(${PID:- })- [%16thread] %-5level %-64logger{128} - %msg%n" /&gt; --&gt;</span>
+	
+	<span class="c">&lt;!-- &lt;contextName&gt;${app}&lt;/contextName&gt; --&gt;</span>
+	<span class="c">&lt;!--输出到控制台 --&gt;</span>
+	<span class="nt">&lt;appender</span> <span class="na">name=</span><span class="s">"console"</span>
+		<span class="na">class=</span><span class="s">"ch.qos.logback.core.ConsoleAppender"</span><span class="nt">&gt;</span>
+		<span class="c">&lt;!-- 级别过滤 --&gt;</span>
+		<span class="nt">&lt;filter</span> <span class="na">class=</span><span class="s">"ch.qos.logback.classic.filter.ThresholdFilter"</span><span class="nt">&gt;</span>
+			<span class="c">&lt;!-- 级别低于INFO 的日志不会被打印 --&gt;</span>
+			<span class="nt">&lt;level&gt;</span>INFO<span class="nt">&lt;/level&gt;</span>
+		<span class="nt">&lt;/filter&gt;</span>
+		<span class="c">&lt;!-- 打印模板 --&gt;</span>
+		<span class="nt">&lt;encoder&gt;</span>
+			<span class="nt">&lt;pattern&gt;</span>${LOG_PATTERN}<span class="nt">&lt;/pattern&gt;</span>
+			<span class="c">&lt;!-- &lt;pattern&gt;%d -%magenta(${PID:- })- [%16thread] %customcolor(%-5level) 
+				%cyan(%-64logger{128}) - %msg%n&lt;/pattern&gt; --&gt;</span>
+		<span class="nt">&lt;/encoder&gt;</span>
+	<span class="nt">&lt;/appender&gt;</span>
+
+	<span class="c">&lt;!--输出到文件 --&gt;</span>
+	<span class="c">&lt;!-- all 日志文件，级别高于info 的全部打印 --&gt;</span>
+	<span class="nt">&lt;appender</span> <span class="na">name=</span><span class="s">"all-file"</span>
+		<span class="na">class=</span><span class="s">"ch.qos.logback.core.rolling.RollingFileAppender"</span><span class="nt">&gt;</span>
+		<span class="nt">&lt;file&gt;</span>${log.path}/${app}-all.log<span class="nt">&lt;/file&gt;</span>
+		<span class="c">&lt;!-- ThresholdFilter级别过滤 级别大于 info 的才会输出 --&gt;</span>
+		<span class="nt">&lt;filter</span> <span class="na">class=</span><span class="s">"ch.qos.logback.classic.filter.ThresholdFilter"</span><span class="nt">&gt;</span>
+			<span class="nt">&lt;level&gt;</span>INFO<span class="nt">&lt;/level&gt;</span>
+		<span class="nt">&lt;/filter&gt;</span>
+		<span class="nt">&lt;rollingPolicy</span>
+			<span class="na">class=</span><span class="s">"ch.qos.logback.core.rolling.TimeBasedRollingPolicy"</span><span class="nt">&gt;</span>
+			<span class="nt">&lt;fileNamePattern&gt;</span>${log.path}/all/${app}-all-logging-%d{yyyy-MM-dd}.log
+			<span class="nt">&lt;/fileNamePattern&gt;</span>
+			<span class="c">&lt;!-- &lt;fileNamePattern&gt;${log.path}/spring-boot-${log.name}-logging.%d{yyyy-MM-dd}.all-log.zip&lt;/fileNamePattern&gt; --&gt;</span>
+			<span class="c">&lt;!-- 日志保存周期 --&gt;</span>
+			<span class="nt">&lt;maxHistory&gt;</span>30<span class="nt">&lt;/maxHistory&gt;</span>
+			<span class="c">&lt;!-- 总大小 --&gt;</span>
+			<span class="nt">&lt;totalSizeCap&gt;</span>1GB<span class="nt">&lt;/totalSizeCap&gt;</span>
+		<span class="nt">&lt;/rollingPolicy&gt;</span>
+		<span class="nt">&lt;encoder&gt;</span>
+			<span class="nt">&lt;pattern&gt;</span>${LOG_PATTERN}<span class="nt">&lt;/pattern&gt;</span>
+		<span class="nt">&lt;/encoder&gt;</span>
+	<span class="nt">&lt;/appender&gt;</span>
+
+	<span class="c">&lt;!-- info 日志文件 只打印info级别信息 --&gt;</span>
+	<span class="nt">&lt;appender</span> <span class="na">name=</span><span class="s">"info-file"</span>
+		<span class="na">class=</span><span class="s">"ch.qos.logback.core.rolling.RollingFileAppender"</span><span class="nt">&gt;</span>
+		<span class="nt">&lt;file&gt;</span>${log.path}/${app}-info.log<span class="nt">&lt;/file&gt;</span>
+		<span class="c">&lt;!-- 只打印唯一种级别的日志 可以用 LevelFilter 配置 --&gt;</span>
+		<span class="nt">&lt;filter</span> <span class="na">class=</span><span class="s">"ch.qos.logback.classic.filter.LevelFilter"</span><span class="nt">&gt;</span>
+			<span class="nt">&lt;level&gt;</span>INFO<span class="nt">&lt;/level&gt;</span>
+			<span class="c">&lt;!--匹配到就允许 --&gt;</span>
+			<span class="nt">&lt;onMatch&gt;</span>ACCEPT<span class="nt">&lt;/onMatch&gt;</span>
+			<span class="c">&lt;!--没匹配到就禁止 --&gt;</span>
+			<span class="nt">&lt;onMismatch&gt;</span>DENY<span class="nt">&lt;/onMismatch&gt;</span>
+		<span class="nt">&lt;/filter&gt;</span>
+		<span class="nt">&lt;rollingPolicy</span>
+			<span class="na">class=</span><span class="s">"ch.qos.logback.core.rolling.TimeBasedRollingPolicy"</span><span class="nt">&gt;</span>
+			<span class="nt">&lt;fileNamePattern&gt;</span>${log.path}/info/${app}-info-logging-%d{yyyy-MM-dd}.log
+			<span class="nt">&lt;/fileNamePattern&gt;</span>
+			<span class="c">&lt;!-- 日志保存周期 --&gt;</span>
+			<span class="nt">&lt;maxHistory&gt;</span>30<span class="nt">&lt;/maxHistory&gt;</span>
+			<span class="c">&lt;!-- 总大小 --&gt;</span>
+			<span class="nt">&lt;totalSizeCap&gt;</span>1GB<span class="nt">&lt;/totalSizeCap&gt;</span>
+		<span class="nt">&lt;/rollingPolicy&gt;</span>
+		<span class="nt">&lt;encoder&gt;</span>
+			<span class="nt">&lt;pattern&gt;</span>${LOG_PATTERN}<span class="nt">&lt;/pattern&gt;</span>
+		<span class="nt">&lt;/encoder&gt;</span>
+	<span class="nt">&lt;/appender&gt;</span>
+
+	<span class="c">&lt;!-- warn 日志文件 只打印warn级别信息 --&gt;</span>
+	<span class="nt">&lt;appender</span> <span class="na">name=</span><span class="s">"warn-file"</span>
+		<span class="na">class=</span><span class="s">"ch.qos.logback.core.rolling.RollingFileAppender"</span><span class="nt">&gt;</span>
+		<span class="nt">&lt;file&gt;</span>${log.path}/${app}-warn.log<span class="nt">&lt;/file&gt;</span>
+		<span class="c">&lt;!-- 只打印唯一种级别的日志 可以用 LevelFilter 配置 --&gt;</span>
+		<span class="nt">&lt;filter</span> <span class="na">class=</span><span class="s">"ch.qos.logback.classic.filter.LevelFilter"</span><span class="nt">&gt;</span>
+			<span class="nt">&lt;level&gt;</span>WARN<span class="nt">&lt;/level&gt;</span>
+			<span class="c">&lt;!--匹配到就允许 --&gt;</span>
+			<span class="nt">&lt;onMatch&gt;</span>ACCEPT<span class="nt">&lt;/onMatch&gt;</span>
+			<span class="c">&lt;!--没匹配到就禁止 --&gt;</span>
+			<span class="nt">&lt;onMismatch&gt;</span>DENY<span class="nt">&lt;/onMismatch&gt;</span>
+		<span class="nt">&lt;/filter&gt;</span>
+		<span class="nt">&lt;rollingPolicy</span>
+			<span class="na">class=</span><span class="s">"ch.qos.logback.core.rolling.TimeBasedRollingPolicy"</span><span class="nt">&gt;</span>
+			<span class="nt">&lt;fileNamePattern&gt;</span>${log.path}/warn/${app}-warn-logging-%d{yyyy-MM-dd}.log
+			<span class="nt">&lt;/fileNamePattern&gt;</span>
+			<span class="c">&lt;!-- 日志保存周期 --&gt;</span>
+			<span class="nt">&lt;maxHistory&gt;</span>30<span class="nt">&lt;/maxHistory&gt;</span>
+			<span class="c">&lt;!-- 总大小 --&gt;</span>
+			<span class="nt">&lt;totalSizeCap&gt;</span>1GB<span class="nt">&lt;/totalSizeCap&gt;</span>
+		<span class="nt">&lt;/rollingPolicy&gt;</span>
+		<span class="c">&lt;!-- &lt;rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy"&gt; 
+			&lt;fileNamePattern&gt;${log.path}/spring-boot-${log.name}-logging.%d{yyyy-MM-dd}.warn-log.zip&lt;/fileNamePattern&gt; 
+			日志保存周期 &lt;maxHistory&gt;30&lt;/maxHistory&gt; 总大小 &lt;totalSizeCap&gt;1GB&lt;/totalSizeCap&gt; &lt;/rollingPolicy&gt; --&gt;</span>
+		<span class="nt">&lt;encoder&gt;</span>
+			<span class="nt">&lt;pattern&gt;</span>${LOG_PATTERN}<span class="nt">&lt;/pattern&gt;</span>
+		<span class="nt">&lt;/encoder&gt;</span>
+	<span class="nt">&lt;/appender&gt;</span>
+
+	<span class="c">&lt;!-- error 日志文件 只打印error级别信息 --&gt;</span>
+	<span class="nt">&lt;appender</span> <span class="na">name=</span><span class="s">"error-file"</span>
+		<span class="na">class=</span><span class="s">"ch.qos.logback.core.rolling.RollingFileAppender"</span><span class="nt">&gt;</span>
+		<span class="nt">&lt;file&gt;</span>${log.path}/${app}-error.log<span class="nt">&lt;/file&gt;</span>
+		<span class="c">&lt;!-- &lt;filter class="ch.qos.logback.classic.filter.LevelFilter"&gt; &lt;level&gt;ERROR&lt;/level&gt; 
+			&lt;onMatch&gt;ACCEPT&lt;/onMatch&gt; &lt;onMismatch&gt;DENY&lt;/onMismatch&gt; &lt;/filter&gt; --&gt;</span>
+		<span class="c">&lt;!--如果只是想要 Error 级别的日志，那么需要过滤一下，默认是 info 级别的，ThresholdFilter --&gt;</span>
+		<span class="nt">&lt;filter</span> <span class="na">class=</span><span class="s">"ch.qos.logback.classic.filter.ThresholdFilter"</span><span class="nt">&gt;</span>
+			<span class="nt">&lt;level&gt;</span>Error<span class="nt">&lt;/level&gt;</span>
+		<span class="nt">&lt;/filter&gt;</span>
+		<span class="nt">&lt;rollingPolicy</span>
+			<span class="na">class=</span><span class="s">"ch.qos.logback.core.rolling.TimeBasedRollingPolicy"</span><span class="nt">&gt;</span>
+			<span class="nt">&lt;fileNamePattern&gt;</span>${log.path}/error/${app}-error-logging-%d{yyyy-MM-dd}.log
+			<span class="nt">&lt;/fileNamePattern&gt;</span>
+			<span class="c">&lt;!-- 日志保存周期 --&gt;</span>
+			<span class="nt">&lt;maxHistory&gt;</span>30<span class="nt">&lt;/maxHistory&gt;</span>
+			<span class="c">&lt;!-- 总大小 --&gt;</span>
+			<span class="nt">&lt;totalSizeCap&gt;</span>1GB<span class="nt">&lt;/totalSizeCap&gt;</span>
+		<span class="nt">&lt;/rollingPolicy&gt;</span>
+		<span class="nt">&lt;encoder&gt;</span>
+			<span class="nt">&lt;pattern&gt;</span>${LOG_PATTERN}<span class="nt">&lt;/pattern&gt;</span>
+		<span class="nt">&lt;/encoder&gt;</span>
+	<span class="nt">&lt;/appender&gt;</span>
+
+
+
+
+
+
+	<span class="c">&lt;!-- root 指定打印日志最低级别 --&gt;</span>
+	<span class="nt">&lt;root</span> <span class="na">level=</span><span class="s">"info"</span><span class="nt">&gt;</span>
+		<span class="nt">&lt;appender-ref</span> <span class="na">ref=</span><span class="s">"console"</span> <span class="nt">/&gt;</span>
+		<span class="nt">&lt;appender-ref</span> <span class="na">ref=</span><span class="s">"all-file"</span> <span class="nt">/&gt;</span>
+		<span class="c">&lt;!-- &lt;appender-ref ref="trace-file" /&gt; --&gt;</span>
+		<span class="c">&lt;!-- &lt;appender-ref ref="debug-file" /&gt; --&gt;</span>
+		<span class="nt">&lt;appender-ref</span> <span class="na">ref=</span><span class="s">"info-file"</span> <span class="nt">/&gt;</span>
+		<span class="nt">&lt;appender-ref</span> <span class="na">ref=</span><span class="s">"warn-file"</span> <span class="nt">/&gt;</span>
+		<span class="nt">&lt;appender-ref</span> <span class="na">ref=</span><span class="s">"error-file"</span> <span class="nt">/&gt;</span>
+	<span class="nt">&lt;/root&gt;</span>
+
+	<span class="c">&lt;!-- logback为java中的包 --&gt;</span>
+	<span class="c">&lt;!-- &lt;logger name="com.baiding"/&gt; --&gt;</span>
+	<span class="c">&lt;!-- java中的包 --&gt;</span>
+	<span class="c">&lt;!-- &lt;logger name="com.baiding" level="warn" addtivity="false"&gt; &lt;appender-ref 
+		ref="console" /&gt; &lt;/logger&gt; --&gt;</span>
+
+
+	<span class="c">&lt;!-- &lt;appender name="trace-file" class="ch.qos.logback.core.rolling.RollingFileAppender"&gt; 
+		&lt;file&gt;${log.path}/spring-boot-${log.name}-trace.log&lt;/file&gt; &lt;filter class="ch.qos.logback.classic.filter.LevelFilter"&gt; 
+		&lt;level&gt;TRACE&lt;/level&gt; &lt;onMatch&gt;ACCEPT&lt;/onMatch&gt; &lt;onMismatch&gt;DENY&lt;/onMismatch&gt; 
+		&lt;/filter&gt; &lt;rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy"&gt; 
+		&lt;fileNamePattern&gt;${log.path}/spring-boot-${log.name}-logging.%d{yyyy-MM-dd}.trace-log.zip&lt;/fileNamePattern&gt; 
+		日志保存周期 &lt;maxHistory&gt;30&lt;/maxHistory&gt; 总大小 &lt;totalSizeCap&gt;1GB&lt;/totalSizeCap&gt; &lt;/rollingPolicy&gt; 
+		&lt;encoder&gt; &lt;pattern&gt;%d{HH:mm:ss.SSS} %contextName [%thread] %-5level %logger{36} 
+		- %msg%n&lt;/pattern&gt; &lt;/encoder&gt; &lt;/appender&gt; --&gt;</span>
+
+	<span class="c">&lt;!-- &lt;appender name="debug-file" class="ch.qos.logback.core.rolling.RollingFileAppender"&gt; 
+		&lt;file&gt;${log.path}/spring-boot-${log.name}-debug.log&lt;/file&gt; &lt;filter class="ch.qos.logback.classic.filter.LevelFilter"&gt; 
+		&lt;level&gt;DEBUG&lt;/level&gt; &lt;onMatch&gt;ACCEPT&lt;/onMatch&gt; &lt;onMismatch&gt;DENY&lt;/onMismatch&gt; 
+		&lt;/filter&gt; &lt;rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy"&gt; 
+		&lt;fileNamePattern&gt;${log.path}/spring-boot-${log.name}-logging.%d{yyyy-MM-dd}.debug-log.zip&lt;/fileNamePattern&gt; 
+		日志保存周期 &lt;maxHistory&gt;30&lt;/maxHistory&gt; 总大小 &lt;totalSizeCap&gt;1GB&lt;/totalSizeCap&gt; &lt;/rollingPolicy&gt; 
+		&lt;encoder&gt; &lt;pattern&gt;%d{HH:mm:ss.SSS} %contextName [%thread] %-5level %logger{36} 
+		- %msg%n&lt;/pattern&gt; &lt;/encoder&gt; &lt;/appender&gt; --&gt;</span>
+
+<span class="nt">&lt;/configuration&gt;</span>
+</code></pre></div></div>
+
+<h3 id="启动类">启动类</h3>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="nn">com.wunanyu.cloud.config</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">org.springframework.boot.SpringApplication</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.boot.autoconfigure.SpringBootApplication</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.cloud.config.server.EnableConfigServer</span><span class="o">;</span>
+
+<span class="nd">@SpringBootApplication</span>  <span class="c1">//springboot启动类注解</span>
+<span class="nd">@EnableConfigServer</span>  <span class="c1">//SpringCloud-ServerConfig配置中心服务注解，表示这是配置服务中心</span>
+<span class="cm">/**
+ * @author Narule
+ */</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">ConfigApplication</span> <span class="o">{</span>
+
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">main</span><span class="o">(</span><span class="nc">String</span><span class="o">[]</span> <span class="n">args</span><span class="o">)</span> <span class="o">{</span>
+		<span class="nc">SpringApplication</span><span class="o">.</span><span class="na">run</span><span class="o">(</span><span class="nc">ConfigApplication</span><span class="o">.</span><span class="na">class</span><span class="o">,</span> <span class="n">args</span><span class="o">);</span>
+	<span class="o">}</span>
+	
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>启动这个类的main方法，看控制台console的打印日志是否启动成功，启动成功，则可以通过</p>
+
+<p>localhost:8888/eureka-dev.yml 查看配置信息，只要配置地址有这个文件</p>
+
+<h3 id="configserver-配置文件规则">configserver 配置文件规则</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/ { 应用名 } / { 环境名 } [ / { 分支名 } ]
+/ { 应用名 } - { 环境名 }.yml
+/ { 应用名 } - { 环境名 }.properties
+/ { 分支名 } / { 应用名 } - { 环境名 }.yml
+/ { 分支名 } / { 应用名 } - { 环境名 }.properties
+</code></pre></div></div>
+
+<h3 id="client-读取配置">client 读取配置</h3>
+
+<p>如果一个springboot服务叫eureka,eureka配置如下</p>
+
+<p>bootstrap.yml</p>
+
+<div class="language-yml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="na">spring</span><span class="pi">:</span>
+  <span class="na">application</span><span class="pi">:</span>
+    <span class="na">name</span><span class="pi">:</span> <span class="s">eureka</span> <span class="c1">#应用名</span>
+  <span class="na">cloud</span><span class="pi">:</span>
+    <span class="na">config</span><span class="pi">:</span>
+     <span class="na">uri</span><span class="pi">:</span> <span class="s">localhost:8888</span> <span class="c1">#配置中心的访问地址 这不是配置文件的地址，是配置服务server-config的地址</span>
+     <span class="na">profile</span><span class="pi">:</span> <span class="s">dev</span> <span class="c1">#环境</span>
+     <span class="na">label</span><span class="pi">:</span> <span class="s">master</span> <span class="c1">#分支</span>
+<span class="na">management</span><span class="pi">:</span>
+  <span class="na">endpoints</span><span class="pi">:</span>
+    <span class="na">web</span><span class="pi">:</span>
+      <span class="na">exposure</span><span class="pi">:</span>
+        <span class="na">include</span><span class="pi">:</span>
+        <span class="pi">-</span> <span class="s2">"</span><span class="s">*"</span>
+        
+<span class="na">eureka</span><span class="pi">:</span>
+  <span class="na">server</span><span class="pi">:</span>
+    <span class="na">renewal-percent-threshold</span><span class="pi">:</span> <span class="m">0.45</span>
+    
+<span class="na">log</span><span class="pi">:</span>
+  <span class="na">path</span><span class="pi">:</span> <span class="s">log</span>
+</code></pre></div></div>
+
+<p>那么他会读取的文件名称为<code class="language-plaintext highlighter-rouge">eureka-dev.yml</code>, git分支为master的文件(默认)</p>
+
+<h2 id="client">Client</h2>
+
+<p>Client 其实只是在pom中添加 config依赖</p>
+
+<p><code class="language-plaintext highlighter-rouge">&lt;dependency&gt;
+			&lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt;
+			&lt;artifactId&gt;spring-cloud-starter-config&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></p>
+
+<p>并且在bootstrap.yml 中配置server-config服务的url地址，Client就能自己读取到配置中心服务的数据</p>
+
+<h3 id="pom依赖-1">pom依赖</h3>
+
+<div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
+<span class="nt">&lt;project</span> <span class="na">xmlns=</span><span class="s">"http://maven.apache.org/POM/4.0.0"</span> <span class="na">xmlns:xsi=</span><span class="s">"http://www.w3.org/2001/XMLSchema-instance"</span>
+	<span class="na">xsi:schemaLocation=</span><span class="s">"http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd"</span><span class="nt">&gt;</span>
+	<span class="nt">&lt;modelVersion&gt;</span>4.0.0<span class="nt">&lt;/modelVersion&gt;</span>
+	<span class="nt">&lt;parent&gt;</span>
+		<span class="nt">&lt;groupId&gt;</span>org.springframework.boot<span class="nt">&lt;/groupId&gt;</span>
+		<span class="nt">&lt;artifactId&gt;</span>spring-boot-starter-parent<span class="nt">&lt;/artifactId&gt;</span>
+		<span class="nt">&lt;version&gt;</span>2.2.5.RELEASE<span class="nt">&lt;/version&gt;</span>
+		<span class="nt">&lt;relativePath/&gt;</span> <span class="c">&lt;!-- lookup parent from repository --&gt;</span>
+	<span class="nt">&lt;/parent&gt;</span>
+	<span class="nt">&lt;groupId&gt;</span>com.wunanyu<span class="nt">&lt;/groupId&gt;</span>
+	<span class="nt">&lt;artifactId&gt;</span>Eureka<span class="nt">&lt;/artifactId&gt;</span>
+	<span class="nt">&lt;version&gt;</span>0.0.1-SNAPSHOT<span class="nt">&lt;/version&gt;</span>
+	<span class="nt">&lt;name&gt;</span>Eureka<span class="nt">&lt;/name&gt;</span>
+	<span class="nt">&lt;description&gt;</span>Demo project for Spring Boot<span class="nt">&lt;/description&gt;</span>
+
+	<span class="nt">&lt;properties&gt;</span>
+		<span class="nt">&lt;java.version&gt;</span>1.8<span class="nt">&lt;/java.version&gt;</span>
+		<span class="nt">&lt;spring-cloud.version&gt;</span>Hoxton.SR3<span class="nt">&lt;/spring-cloud.version&gt;</span>
+	<span class="nt">&lt;/properties&gt;</span>
+
+	<span class="nt">&lt;dependencies&gt;</span>
+
+		<span class="nt">&lt;dependency&gt;</span>
+			<span class="nt">&lt;groupId&gt;</span>org.springframework.boot<span class="nt">&lt;/groupId&gt;</span>
+			<span class="nt">&lt;artifactId&gt;</span>spring-boot-starter-test<span class="nt">&lt;/artifactId&gt;</span>
+			<span class="nt">&lt;scope&gt;</span>test<span class="nt">&lt;/scope&gt;</span>
+			<span class="nt">&lt;exclusions&gt;</span>
+				<span class="nt">&lt;exclusion&gt;</span>
+					<span class="nt">&lt;groupId&gt;</span>org.junit.vintage<span class="nt">&lt;/groupId&gt;</span>
+					<span class="nt">&lt;artifactId&gt;</span>junit-vintage-engine<span class="nt">&lt;/artifactId&gt;</span>
+				<span class="nt">&lt;/exclusion&gt;</span>
+			<span class="nt">&lt;/exclusions&gt;</span>
+		<span class="nt">&lt;/dependency&gt;</span>
+		<span class="nt">&lt;dependency&gt;</span>
+			<span class="nt">&lt;groupId&gt;</span>org.springframework.cloud<span class="nt">&lt;/groupId&gt;</span>
+			<span class="nt">&lt;artifactId&gt;</span>spring-cloud-starter-config<span class="nt">&lt;/artifactId&gt;</span>
+		<span class="nt">&lt;/dependency&gt;</span>
+		<span class="c">&lt;!--Spring Boot Actuator，感应服务端变化  监控工具，可以刷新数据（需要自己主动调用接口）--&gt;</span>
+        <span class="nt">&lt;dependency&gt;</span>
+            <span class="nt">&lt;groupId&gt;</span>org.springframework.boot<span class="nt">&lt;/groupId&gt;</span>
+            <span class="nt">&lt;artifactId&gt;</span>spring-boot-starter-actuator<span class="nt">&lt;/artifactId&gt;</span>
+        <span class="nt">&lt;/dependency&gt;</span>
+		
+	<span class="nt">&lt;/dependencies&gt;</span>
+
+	<span class="nt">&lt;dependencyManagement&gt;</span>
+		<span class="nt">&lt;dependencies&gt;</span>
+			<span class="nt">&lt;dependency&gt;</span>
+				<span class="nt">&lt;groupId&gt;</span>org.springframework.cloud<span class="nt">&lt;/groupId&gt;</span>
+				<span class="nt">&lt;artifactId&gt;</span>spring-cloud-dependencies<span class="nt">&lt;/artifactId&gt;</span>
+				<span class="nt">&lt;version&gt;</span>${spring-cloud.version}<span class="nt">&lt;/version&gt;</span>
+				<span class="nt">&lt;type&gt;</span>pom<span class="nt">&lt;/type&gt;</span>
+				<span class="nt">&lt;scope&gt;</span>import<span class="nt">&lt;/scope&gt;</span>
+			<span class="nt">&lt;/dependency&gt;</span>
+		<span class="nt">&lt;/dependencies&gt;</span>
+	<span class="nt">&lt;/dependencyManagement&gt;</span>
+
+	<span class="nt">&lt;build&gt;</span>
+		<span class="nt">&lt;plugins&gt;</span>
+			<span class="nt">&lt;plugin&gt;</span>
+				<span class="nt">&lt;groupId&gt;</span>org.springframework.boot<span class="nt">&lt;/groupId&gt;</span>
+				<span class="nt">&lt;artifactId&gt;</span>spring-boot-maven-plugin<span class="nt">&lt;/artifactId&gt;</span>
+			<span class="nt">&lt;/plugin&gt;</span>
+		<span class="nt">&lt;/plugins&gt;</span>
+	<span class="nt">&lt;/build&gt;</span>
+
+<span class="nt">&lt;/project&gt;</span>
+
+</code></pre></div></div>
+
+<h3 id="配置文件-1">配置文件</h3>
+
+<h4 id="bootstrapyml">bootstrap.yml</h4>
+
+<div class="language-yml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="na">spring</span><span class="pi">:</span>
+  <span class="na">application</span><span class="pi">:</span>
+    <span class="na">name</span><span class="pi">:</span> <span class="s">eureka</span>
+  <span class="na">cloud</span><span class="pi">:</span>
+    <span class="na">config</span><span class="pi">:</span>
+     <span class="na">uri</span><span class="pi">:</span> <span class="s">http://192.168.50.135:8888</span>
+     <span class="na">profile</span><span class="pi">:</span> <span class="s">dev</span>
+     <span class="na">label</span><span class="pi">:</span> <span class="s">master</span>
+<span class="na">management</span><span class="pi">:</span>
+  <span class="na">endpoints</span><span class="pi">:</span>
+    <span class="na">web</span><span class="pi">:</span>
+      <span class="na">exposure</span><span class="pi">:</span>
+        <span class="na">include</span><span class="pi">:</span>
+        <span class="pi">-</span> <span class="s2">"</span><span class="s">*"</span>
+        
+<span class="na">eureka</span><span class="pi">:</span>
+  <span class="na">server</span><span class="pi">:</span>
+    <span class="na">renewal-percent-threshold</span><span class="pi">:</span> <span class="m">0.45</span>
+    
+<span class="na">log</span><span class="pi">:</span>
+  <span class="na">path</span><span class="pi">:</span> <span class="s">log</span>
+</code></pre></div></div>
+
+<h4 id="logback-springxml-1">logback-spring.xml</h4>
+
+<div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
+<span class="c">&lt;!--  
+配置说明
+
+%6 表示字段最小长度为6，格式右对齐 		[	 右对齐 ]
+%-64 表示最小长度64，并且左对齐		[左对齐	]
+%6.32 表示最小长度6，最大长度32		[左对齐	]
+--&gt;</span>
+<span class="nt">&lt;configuration</span> <span class="na">scan=</span><span class="s">"true"</span> <span class="na">scanPeriod=</span><span class="s">"60 seconds"</span>
+	<span class="na">debug=</span><span class="s">"false"</span><span class="nt">&gt;</span>
+	<span class="c">&lt;!-- 默认读取application.yml 配置 --&gt;</span>
+	<span class="nt">&lt;springProperty</span> <span class="na">scope=</span><span class="s">"contex"</span> <span class="na">name=</span><span class="s">"app"</span> <span class="na">source=</span><span class="s">"spring.application.name"</span><span class="nt">&gt;&lt;/springProperty&gt;</span>
+	<span class="nt">&lt;springProperty</span> <span class="na">scope=</span><span class="s">"contex"</span> <span class="na">name=</span><span class="s">"log.path"</span> <span class="na">source=</span><span class="s">"log.path"</span><span class="nt">&gt;&lt;/springProperty&gt;</span>
+ 	<span class="c">&lt;!-- &lt;property name="log.path" value="log" /&gt; --&gt;</span>
+	<span class="nt">&lt;property</span> <span class="na">name=</span><span class="s">"LOG_PATTERN"</span>
+		<span class="na">value=</span><span class="s">"%d -%magenta(%6(${PID:- }))- [%-5(${app})] [%6thread] %-5level %cyan(%-64logger{128}) - %msg%n"</span> <span class="nt">/&gt;</span>
+		<span class="c">&lt;!-- 时间	进程						 线程 					日志级别 				输出对象 			消息内容 --&gt;</span>
+		<span class="c">&lt;!-- 彩色 --&gt;</span>
+		<span class="c">&lt;!-- &lt;property name="LOG_PATTERN" value="%d -%magenta(${PID:- })- [%16thread] %customcolor(%-5level) %cyan(%-64logger{128}) - %msg%n" /&gt; --&gt;</span>
+		<span class="c">&lt;!-- 黑白日志 --&gt;</span>
+		<span class="c">&lt;!-- &lt;property name="LOG_PATTERN" value="%d -%6(${PID:- })- [%16thread] %-5level %-64logger{128} - %msg%n" /&gt; --&gt;</span>
+	
+	<span class="c">&lt;!-- &lt;contextName&gt;${app}&lt;/contextName&gt; --&gt;</span>
+	<span class="c">&lt;!--输出到控制台 --&gt;</span>
+	<span class="nt">&lt;appender</span> <span class="na">name=</span><span class="s">"console"</span>
+		<span class="na">class=</span><span class="s">"ch.qos.logback.core.ConsoleAppender"</span><span class="nt">&gt;</span>
+		<span class="c">&lt;!-- 级别过滤 --&gt;</span>
+		<span class="nt">&lt;filter</span> <span class="na">class=</span><span class="s">"ch.qos.logback.classic.filter.ThresholdFilter"</span><span class="nt">&gt;</span>
+			<span class="c">&lt;!-- 级别低于INFO 的日志不会被打印 --&gt;</span>
+			<span class="nt">&lt;level&gt;</span>INFO<span class="nt">&lt;/level&gt;</span>
+		<span class="nt">&lt;/filter&gt;</span>
+		<span class="c">&lt;!-- 打印模板 --&gt;</span>
+		<span class="nt">&lt;encoder&gt;</span>
+			<span class="nt">&lt;pattern&gt;</span>${LOG_PATTERN}<span class="nt">&lt;/pattern&gt;</span>
+			<span class="c">&lt;!-- &lt;pattern&gt;%d -%magenta(${PID:- })- [%16thread] %customcolor(%-5level) 
+				%cyan(%-64logger{128}) - %msg%n&lt;/pattern&gt; --&gt;</span>
+		<span class="nt">&lt;/encoder&gt;</span>
+	<span class="nt">&lt;/appender&gt;</span>
+
+	<span class="c">&lt;!--输出到文件 --&gt;</span>
+	<span class="c">&lt;!-- all 日志文件，级别高于info 的全部打印 --&gt;</span>
+	<span class="nt">&lt;appender</span> <span class="na">name=</span><span class="s">"all-file"</span>
+		<span class="na">class=</span><span class="s">"ch.qos.logback.core.rolling.RollingFileAppender"</span><span class="nt">&gt;</span>
+		<span class="nt">&lt;file&gt;</span>${log.path}/${app}-all.log<span class="nt">&lt;/file&gt;</span>
+		<span class="c">&lt;!-- ThresholdFilter级别过滤 级别大于 info 的才会输出 --&gt;</span>
+		<span class="nt">&lt;filter</span> <span class="na">class=</span><span class="s">"ch.qos.logback.classic.filter.ThresholdFilter"</span><span class="nt">&gt;</span>
+			<span class="nt">&lt;level&gt;</span>INFO<span class="nt">&lt;/level&gt;</span>
+		<span class="nt">&lt;/filter&gt;</span>
+		<span class="nt">&lt;rollingPolicy</span>
+			<span class="na">class=</span><span class="s">"ch.qos.logback.core.rolling.TimeBasedRollingPolicy"</span><span class="nt">&gt;</span>
+			<span class="nt">&lt;fileNamePattern&gt;</span>${log.path}/all/${app}-all-logging-%d{yyyy-MM-dd}.log
+			<span class="nt">&lt;/fileNamePattern&gt;</span>
+			<span class="c">&lt;!-- &lt;fileNamePattern&gt;${log.path}/spring-boot-${log.name}-logging.%d{yyyy-MM-dd}.all-log.zip&lt;/fileNamePattern&gt; --&gt;</span>
+			<span class="c">&lt;!-- 日志保存周期 --&gt;</span>
+			<span class="nt">&lt;maxHistory&gt;</span>30<span class="nt">&lt;/maxHistory&gt;</span>
+			<span class="c">&lt;!-- 总大小 --&gt;</span>
+			<span class="nt">&lt;totalSizeCap&gt;</span>1GB<span class="nt">&lt;/totalSizeCap&gt;</span>
+		<span class="nt">&lt;/rollingPolicy&gt;</span>
+		<span class="nt">&lt;encoder&gt;</span>
+			<span class="nt">&lt;pattern&gt;</span>${LOG_PATTERN}<span class="nt">&lt;/pattern&gt;</span>
+		<span class="nt">&lt;/encoder&gt;</span>
+	<span class="nt">&lt;/appender&gt;</span>
+
+	<span class="c">&lt;!-- info 日志文件 只打印info级别信息 --&gt;</span>
+	<span class="nt">&lt;appender</span> <span class="na">name=</span><span class="s">"info-file"</span>
+		<span class="na">class=</span><span class="s">"ch.qos.logback.core.rolling.RollingFileAppender"</span><span class="nt">&gt;</span>
+		<span class="nt">&lt;file&gt;</span>${log.path}/${app}-info.log<span class="nt">&lt;/file&gt;</span>
+		<span class="c">&lt;!-- 只打印唯一种级别的日志 可以用 LevelFilter 配置 --&gt;</span>
+		<span class="nt">&lt;filter</span> <span class="na">class=</span><span class="s">"ch.qos.logback.classic.filter.LevelFilter"</span><span class="nt">&gt;</span>
+			<span class="nt">&lt;level&gt;</span>INFO<span class="nt">&lt;/level&gt;</span>
+			<span class="c">&lt;!--匹配到就允许 --&gt;</span>
+			<span class="nt">&lt;onMatch&gt;</span>ACCEPT<span class="nt">&lt;/onMatch&gt;</span>
+			<span class="c">&lt;!--没匹配到就禁止 --&gt;</span>
+			<span class="nt">&lt;onMismatch&gt;</span>DENY<span class="nt">&lt;/onMismatch&gt;</span>
+		<span class="nt">&lt;/filter&gt;</span>
+		<span class="nt">&lt;rollingPolicy</span>
+			<span class="na">class=</span><span class="s">"ch.qos.logback.core.rolling.TimeBasedRollingPolicy"</span><span class="nt">&gt;</span>
+			<span class="nt">&lt;fileNamePattern&gt;</span>${log.path}/info/${app}-info-logging-%d{yyyy-MM-dd}.log
+			<span class="nt">&lt;/fileNamePattern&gt;</span>
+			<span class="c">&lt;!-- 日志保存周期 --&gt;</span>
+			<span class="nt">&lt;maxHistory&gt;</span>30<span class="nt">&lt;/maxHistory&gt;</span>
+			<span class="c">&lt;!-- 总大小 --&gt;</span>
+			<span class="nt">&lt;totalSizeCap&gt;</span>1GB<span class="nt">&lt;/totalSizeCap&gt;</span>
+		<span class="nt">&lt;/rollingPolicy&gt;</span>
+		<span class="nt">&lt;encoder&gt;</span>
+			<span class="nt">&lt;pattern&gt;</span>${LOG_PATTERN}<span class="nt">&lt;/pattern&gt;</span>
+		<span class="nt">&lt;/encoder&gt;</span>
+	<span class="nt">&lt;/appender&gt;</span>
+
+	<span class="c">&lt;!-- warn 日志文件 只打印warn级别信息 --&gt;</span>
+	<span class="nt">&lt;appender</span> <span class="na">name=</span><span class="s">"warn-file"</span>
+		<span class="na">class=</span><span class="s">"ch.qos.logback.core.rolling.RollingFileAppender"</span><span class="nt">&gt;</span>
+		<span class="nt">&lt;file&gt;</span>${log.path}/${app}-warn.log<span class="nt">&lt;/file&gt;</span>
+		<span class="c">&lt;!-- 只打印唯一种级别的日志 可以用 LevelFilter 配置 --&gt;</span>
+		<span class="nt">&lt;filter</span> <span class="na">class=</span><span class="s">"ch.qos.logback.classic.filter.LevelFilter"</span><span class="nt">&gt;</span>
+			<span class="nt">&lt;level&gt;</span>WARN<span class="nt">&lt;/level&gt;</span>
+			<span class="c">&lt;!--匹配到就允许 --&gt;</span>
+			<span class="nt">&lt;onMatch&gt;</span>ACCEPT<span class="nt">&lt;/onMatch&gt;</span>
+			<span class="c">&lt;!--没匹配到就禁止 --&gt;</span>
+			<span class="nt">&lt;onMismatch&gt;</span>DENY<span class="nt">&lt;/onMismatch&gt;</span>
+		<span class="nt">&lt;/filter&gt;</span>
+		<span class="nt">&lt;rollingPolicy</span>
+			<span class="na">class=</span><span class="s">"ch.qos.logback.core.rolling.TimeBasedRollingPolicy"</span><span class="nt">&gt;</span>
+			<span class="nt">&lt;fileNamePattern&gt;</span>${log.path}/warn/${app}-warn-logging-%d{yyyy-MM-dd}.log
+			<span class="nt">&lt;/fileNamePattern&gt;</span>
+			<span class="c">&lt;!-- 日志保存周期 --&gt;</span>
+			<span class="nt">&lt;maxHistory&gt;</span>30<span class="nt">&lt;/maxHistory&gt;</span>
+			<span class="c">&lt;!-- 总大小 --&gt;</span>
+			<span class="nt">&lt;totalSizeCap&gt;</span>1GB<span class="nt">&lt;/totalSizeCap&gt;</span>
+		<span class="nt">&lt;/rollingPolicy&gt;</span>
+		<span class="c">&lt;!-- &lt;rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy"&gt; 
+			&lt;fileNamePattern&gt;${log.path}/spring-boot-${log.name}-logging.%d{yyyy-MM-dd}.warn-log.zip&lt;/fileNamePattern&gt; 
+			日志保存周期 &lt;maxHistory&gt;30&lt;/maxHistory&gt; 总大小 &lt;totalSizeCap&gt;1GB&lt;/totalSizeCap&gt; &lt;/rollingPolicy&gt; --&gt;</span>
+		<span class="nt">&lt;encoder&gt;</span>
+			<span class="nt">&lt;pattern&gt;</span>${LOG_PATTERN}<span class="nt">&lt;/pattern&gt;</span>
+		<span class="nt">&lt;/encoder&gt;</span>
+	<span class="nt">&lt;/appender&gt;</span>
+
+	<span class="c">&lt;!-- error 日志文件 只打印error级别信息 --&gt;</span>
+	<span class="nt">&lt;appender</span> <span class="na">name=</span><span class="s">"error-file"</span>
+		<span class="na">class=</span><span class="s">"ch.qos.logback.core.rolling.RollingFileAppender"</span><span class="nt">&gt;</span>
+		<span class="nt">&lt;file&gt;</span>${log.path}/${app}-error.log<span class="nt">&lt;/file&gt;</span>
+		<span class="c">&lt;!-- &lt;filter class="ch.qos.logback.classic.filter.LevelFilter"&gt; &lt;level&gt;ERROR&lt;/level&gt; 
+			&lt;onMatch&gt;ACCEPT&lt;/onMatch&gt; &lt;onMismatch&gt;DENY&lt;/onMismatch&gt; &lt;/filter&gt; --&gt;</span>
+		<span class="c">&lt;!--如果只是想要 Error 级别的日志，那么需要过滤一下，默认是 info 级别的，ThresholdFilter --&gt;</span>
+		<span class="nt">&lt;filter</span> <span class="na">class=</span><span class="s">"ch.qos.logback.classic.filter.ThresholdFilter"</span><span class="nt">&gt;</span>
+			<span class="nt">&lt;level&gt;</span>Error<span class="nt">&lt;/level&gt;</span>
+		<span class="nt">&lt;/filter&gt;</span>
+		<span class="nt">&lt;rollingPolicy</span>
+			<span class="na">class=</span><span class="s">"ch.qos.logback.core.rolling.TimeBasedRollingPolicy"</span><span class="nt">&gt;</span>
+			<span class="nt">&lt;fileNamePattern&gt;</span>${log.path}/error/${app}-error-logging-%d{yyyy-MM-dd}.log
+			<span class="nt">&lt;/fileNamePattern&gt;</span>
+			<span class="c">&lt;!-- 日志保存周期 --&gt;</span>
+			<span class="nt">&lt;maxHistory&gt;</span>30<span class="nt">&lt;/maxHistory&gt;</span>
+			<span class="c">&lt;!-- 总大小 --&gt;</span>
+			<span class="nt">&lt;totalSizeCap&gt;</span>1GB<span class="nt">&lt;/totalSizeCap&gt;</span>
+		<span class="nt">&lt;/rollingPolicy&gt;</span>
+		<span class="nt">&lt;encoder&gt;</span>
+			<span class="nt">&lt;pattern&gt;</span>${LOG_PATTERN}<span class="nt">&lt;/pattern&gt;</span>
+		<span class="nt">&lt;/encoder&gt;</span>
+	<span class="nt">&lt;/appender&gt;</span>
+
+
+
+
+
+
+	<span class="c">&lt;!-- root 指定打印日志最低级别 --&gt;</span>
+	<span class="nt">&lt;root</span> <span class="na">level=</span><span class="s">"info"</span><span class="nt">&gt;</span>
+		<span class="nt">&lt;appender-ref</span> <span class="na">ref=</span><span class="s">"console"</span> <span class="nt">/&gt;</span>
+		<span class="nt">&lt;appender-ref</span> <span class="na">ref=</span><span class="s">"all-file"</span> <span class="nt">/&gt;</span>
+		<span class="c">&lt;!-- &lt;appender-ref ref="trace-file" /&gt; --&gt;</span>
+		<span class="c">&lt;!-- &lt;appender-ref ref="debug-file" /&gt; --&gt;</span>
+		<span class="nt">&lt;appender-ref</span> <span class="na">ref=</span><span class="s">"info-file"</span> <span class="nt">/&gt;</span>
+		<span class="nt">&lt;appender-ref</span> <span class="na">ref=</span><span class="s">"warn-file"</span> <span class="nt">/&gt;</span>
+		<span class="nt">&lt;appender-ref</span> <span class="na">ref=</span><span class="s">"error-file"</span> <span class="nt">/&gt;</span>
+	<span class="nt">&lt;/root&gt;</span>
+
+	<span class="c">&lt;!-- logback为java中的包 --&gt;</span>
+	<span class="c">&lt;!-- &lt;logger name="com.baiding"/&gt; --&gt;</span>
+	<span class="c">&lt;!-- java中的包 --&gt;</span>
+	<span class="c">&lt;!-- &lt;logger name="com.baiding" level="warn" addtivity="false"&gt; &lt;appender-ref 
+		ref="console" /&gt; &lt;/logger&gt; --&gt;</span>
+
+
+	<span class="c">&lt;!-- &lt;appender name="trace-file" class="ch.qos.logback.core.rolling.RollingFileAppender"&gt; 
+		&lt;file&gt;${log.path}/spring-boot-${log.name}-trace.log&lt;/file&gt; &lt;filter class="ch.qos.logback.classic.filter.LevelFilter"&gt; 
+		&lt;level&gt;TRACE&lt;/level&gt; &lt;onMatch&gt;ACCEPT&lt;/onMatch&gt; &lt;onMismatch&gt;DENY&lt;/onMismatch&gt; 
+		&lt;/filter&gt; &lt;rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy"&gt; 
+		&lt;fileNamePattern&gt;${log.path}/spring-boot-${log.name}-logging.%d{yyyy-MM-dd}.trace-log.zip&lt;/fileNamePattern&gt; 
+		日志保存周期 &lt;maxHistory&gt;30&lt;/maxHistory&gt; 总大小 &lt;totalSizeCap&gt;1GB&lt;/totalSizeCap&gt; &lt;/rollingPolicy&gt; 
+		&lt;encoder&gt; &lt;pattern&gt;%d{HH:mm:ss.SSS} %contextName [%thread] %-5level %logger{36} 
+		- %msg%n&lt;/pattern&gt; &lt;/encoder&gt; &lt;/appender&gt; --&gt;</span>
+
+	<span class="c">&lt;!-- &lt;appender name="debug-file" class="ch.qos.logback.core.rolling.RollingFileAppender"&gt; 
+		&lt;file&gt;${log.path}/spring-boot-${log.name}-debug.log&lt;/file&gt; &lt;filter class="ch.qos.logback.classic.filter.LevelFilter"&gt; 
+		&lt;level&gt;DEBUG&lt;/level&gt; &lt;onMatch&gt;ACCEPT&lt;/onMatch&gt; &lt;onMismatch&gt;DENY&lt;/onMismatch&gt; 
+		&lt;/filter&gt; &lt;rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy"&gt; 
+		&lt;fileNamePattern&gt;${log.path}/spring-boot-${log.name}-logging.%d{yyyy-MM-dd}.debug-log.zip&lt;/fileNamePattern&gt; 
+		日志保存周期 &lt;maxHistory&gt;30&lt;/maxHistory&gt; 总大小 &lt;totalSizeCap&gt;1GB&lt;/totalSizeCap&gt; &lt;/rollingPolicy&gt; 
+		&lt;encoder&gt; &lt;pattern&gt;%d{HH:mm:ss.SSS} %contextName [%thread] %-5level %logger{36} 
+		- %msg%n&lt;/pattern&gt; &lt;/encoder&gt; &lt;/appender&gt; --&gt;</span>
+
+<span class="nt">&lt;/configuration&gt;</span>
+</code></pre></div></div>
+
+<h3 id="启动类-1">启动类</h3>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="nn">com.wunanyu.cloud.eureka</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">org.springframework.boot.SpringApplication</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.boot.autoconfigure.SpringBootApplication</span><span class="o">;</span>
+
+<span class="nd">@SpringBootApplication</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">EurekaApplication</span> <span class="o">{</span>
+
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">main</span><span class="o">(</span><span class="nc">String</span><span class="o">[]</span> <span class="n">args</span><span class="o">)</span> <span class="o">{</span>
+		<span class="nc">SpringApplication</span><span class="o">.</span><span class="na">run</span><span class="o">(</span><span class="nc">EurekaApplication</span><span class="o">.</span><span class="na">class</span><span class="o">,</span> <span class="n">args</span><span class="o">);</span>
+	<span class="o">}</span>
+
+<span class="o">}</span>
+
+</code></pre></div></div>
+:ET

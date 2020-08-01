@@ -1,0 +1,8 @@
+I"�<h1 id="java-object">Java Object</h1>
+
+<h2 id="超类object">超类Object</h2>
+
+<blockquote>
+  <p>java中，所有类都默认继承一个超类，最顶层类，就是Object类。</p>
+</blockquote>
+:ET

@@ -1,14 +1,12 @@
-# frozen_string_literal: true
 
-gem "texture"
 Gem::Specification.new do |spec|
   spec.name          = "texture"
   spec.version       = "0.5"
-  spec.authors       = ["Samarjeet"]
-  spec.email         = ["samarsault@gmail.com"]
+  spec.authors       = ["narule"]
+  spec.email         = ["narule.net@gmail.com"]
 
-  spec.summary       = "A configurable jekyll theme for simply beautiful blogs."
-  spec.homepage      = "https://github.com/thelehhman/texture"
+  spec.summary       = "A simple blogs."
+  spec.homepage      = "https://narule.github.io"
   spec.license       = "MIT"
 
   spec.files         = `git ls-files -z`.split("\x0").select { |f| f.match(%r!^(assets|_layouts|_includes|_sass|LICENSE|README|404.html)!i) }

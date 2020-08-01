@@ -1,0 +1,759 @@
+I"!�<p>互联网，将全球不同的计算机等电子设备连接起来，使具备互相通信的条件，但是通信信息有些事隐私，有些通信不能被其他人知道。互联网私人生活交流信息不被恶意者随意窃取，也应该是社会秩序正常稳定的表现，平时的通信不过如此，涉及到商业信息，数据保密更显得格外重要。加密算法是保持通信信息不泄漏的一种技术，可用手段’’</p>
+
+<h1 id="网络数据加密">网络数据加密</h1>
+
+<p>互联网，将全球不同的计算机等电子设备连接起来，使具备互相通信的条件，但是通信信息有些事隐私，有些通信不能被其他人知道。互联网私人生活交流信息不被恶意者随意窃取，也应该是社会秩序正常稳定的表现，平时的通信不过如此，涉及到商业信息，数据保密更显得格外重要。加密算法是保持通信信息不泄漏的一种技术，可用手段。</p>
+
+<h2 id="前言">前言</h2>
+
+<h3 id="网络数据加密是必须做的事">网络数据加密是必须做的事</h3>
+
+<h4 id="安全正确必要性">安全正确必要性</h4>
+
+<p>互联网通信通过电缆或者无线设备，信息是可以被中间人收到记录的，所以要考虑很多风险因素，信息必须被加密处理只是其中之一的考虑</p>
+
+<h5 id="信息安全">信息安全</h5>
+
+<p>明文可能被第三方劫持查看。</p>
+
+<p>就像写信一样，A写信给B，在信件到达B手上之前，信件在途中可能被别人拆开看过然后再封装原样，使AB都不能发觉信息已经被第三个人看了。</p>
+
+<h5 id="信息正确">信息正确</h5>
+
+<p>传输信息可能被修改</p>
+
+<p>同样A给B写信，在途中信件被人劫持，如果信件途中被别人打开，替换里面的信息内容，B收到后的信息很可能是错误的。</p>
+
+<p>网络也是一样，网络通信必须通过有线或者无线设备传输，所以一定是可以劫持的，明文通信没有隐私可言，极不安全，所以加密算法通常需要做的事</p>
+
+<h2 id="概念">概念</h2>
+
+<blockquote>
+  <p>参考文章</p>
+
+  <p>https://www.cnblogs.com/hulianwangjiagoushi/p/10671771.html</p>
+</blockquote>
+
+<p>首先加密是因为存在网路信息传输，所以加密的使用过程分三步</p>
+
+<p>举例 A计算机通过网络传输信息给B计算机，中间使用加密算法过程如下</p>
+
+<p>A (明文 –&gt;加密–&gt;密文)   ———–网络（密文）———–&gt; B（密文 –&gt;解密–&gt;明文）</p>
+
+<pre><code class="language-flow">st=&gt;start: 明文
+op1=&gt;operation: A端加密
+op2=&gt;operation: 加密密文网络传输
+cond=&gt;condition: 签名确认 是否为A端发送的加密数据?
+op3=&gt;operation: B端解密
+op4=&gt;operation: 丢弃（被篡改）信息
+e=&gt;end: 明文
+st-&gt;op1-&gt;op2-&gt;cond
+op3-&gt;e
+cond(yes)-&gt;op3-&gt;e
+cond(no)-&gt;op4
+
+#cond=&gt;condition: Yes or No?
+#cond(yes)-&gt;e
+#cond(no)-&gt;op
+</code></pre>
+<h5 id="密钥">密钥</h5>
+
+<p>用于加密的根据，明文加密成密文的凭据，根据密钥有规则的加密，也只有根据密钥才能有规则的解密，应此通信中加密的密钥保管也很重要（不能被泄露）</p>
+
+<h5 id="明文">明文</h5>
+
+<p>明文指两者通信的原文，能看懂的。</p>
+
+<h5 id="加密">加密</h5>
+
+<p>将明文通过某种方式加密变成密文</p>
+
+<h5 id="密文">密文</h5>
+
+<p>将明文加密后的信息，并且除了密钥，不能用其他方式将其解密成原文信息</p>
+
+<h5 id="传输">传输</h5>
+
+<p>密文的传输（不怕别人看到密文，密文看不到真实信息，第三方不能获取有效信息）</p>
+
+<h5 id="解密">解密</h5>
+
+<p>将密文还原成明文（接收者能看到明文）</p>
+
+<h5 id="签名">签名</h5>
+
+<p>保证双方的信息真实没被修改的技术</p>
+
+<p>A与B之间要有一种签名存在，在通信的时候，收到信息，通过签名要能鉴别信息是否被第三方修改或者信息是第三方伪造发送。</p>
+
+<h1 id="加密算法">加密算法</h1>
+
+<p>信息加密是非常专业的计算知识，通过复杂设计，对信息数据加密，使不能被轻易破解。常见的加密算法都需要有密钥，通过密钥分类又可以分为对称加密和非对称加密。</p>
+
+<p>对称加密指信息的加密和解密使用同一个密钥，非对称加密则是信息的加密和解密不是用到同一个密钥</p>
+
+<h2 id="对称加密">对称加密</h2>
+
+<h3 id="aes">AES</h3>
+
+<blockquote>
+  <p>密码学中的高级加密标准（Advanced Encryption Standard，AES）</p>
+
+  <p>这个标准用来替代原先的<a href="https://baike.baidu.com/item/DES">DES</a>（Data Encryption Standard），已经被多方分析且广为全世界所使用。经过五年的甄选流程，高级加密标准由美国国家标准与技术研究院 （NIST）于2001年11月26日发布于FIPS PUB 197，并在2002年5月26日成为有效的标准。2006年，高级加密标准已然成为对称密钥加密中最流行的算法之一 [1] 。</p>
+
+  <p>该算法为比利时密码学家Joan Daemen和Vincent Rijmen所设计，结合两位作者的名字，以Rijdael之名命之，投稿高级加密标准的甄选流程。（Rijdael的发音近于 “Rhine doll”。）</p>
+</blockquote>
+
+<h4 id="原理">原理</h4>
+
+<blockquote>
+  <p>AES加密数据块和密钥长度可以是128b、192b、256b中的任意一个。AES加密有很多轮的重复和变换。大致步骤如下：①密钥扩展（Key Expansion)；②初始轮（InitialRound)；③重复轮（Rounds），每一重复轮又包括字节间减法运算（SubBytes）、行移位（ShiftRows）、列混合（MixColumns)、轮密钥加法运算（AddRoundKey)等操作；①最终轮（Final Round)，最终轮没有列混合操作（MixColumns)。</p>
+</blockquote>
+
+<h5 id="相关文章介绍">相关文章介绍：</h5>
+
+<p>https://blog.csdn.net/zxh2075/article/details/80630296</p>
+
+<p>https://www.jianshu.com/p/79a225c2650e</p>
+
+<p>https://blog.csdn.net/huangxiaoguo1/article/details/78043169</p>
+
+<h4 id="加密过程">加密过程</h4>
+
+<p>128位密钥加密流程简略描述：</p>
+
+<pre><code class="language-flow">st=&gt;start: 待加密明文
+op0=&gt;operation: 明文与密钥异或运算
+op1=&gt;operation: 获取加密密钥，设置填充方式
+op2=&gt;operation: 加密（信息+密钥 规律运算）
+cond1=&gt;condition: 循环了9次？
+op3=&gt;operation: 第十次加密运算（区别于前面9次）
+op4=&gt;operation: （明文+密钥）规律位运算调整
+e=&gt;end: AES加密密文
+
+st-&gt;op0-&gt;op2-&gt;cond1
+op3-&gt;e
+cond1(yes)-&gt;op3
+cond1(no)-&gt;op4-&gt;op2
+
+
+</code></pre>
+
+<h4 id="解密逆运算">解密（逆运算）</h4>
+
+<p>因为明文加密10轮是根据密钥有规律的复杂运算，因此解密就是上述过程的逆运算，只要有密钥，就能通过规律逆运算得到明文</p>
+
+<h4 id="加密模式">加密模式</h4>
+
+<blockquote>
+  <p>对称/<a href="https://baike.baidu.com/item/分组密码">分组密码</a>一般分为流加密(如OFB、CFB等)和块加密(如ECB、CBC等)。对于流加密，需要将分组密码转化为流模式工作。对于块加密(或称分组加密)，如果要加密超过块大小的数据，就需要涉及填充和链加密模式。</p>
+</blockquote>
+
+<h5 id="ecb">ECB</h5>
+
+<blockquote>
+  <p>ECB(Electronic Code Book电子密码本)模式</p>
+
+  <p>ECB模式是最早采用和最简单的模式，它将加密的数据分成若干组，每组的大小跟加密密钥长度相同，然后每组都用相同的密钥进行加密。</p>
+</blockquote>
+
+<h5 id="cbc">CBC</h5>
+
+<blockquote>
+  <p>CBC(Cipher Block Chaining，加密块链)模式</p>
+
+  <p>这种模式是先将明文切分成若干小段，然后每一小段与初始块或者上一段的密文段进行异或运算后，再与密钥进行加密。</p>
+</blockquote>
+
+<h4 id="java使用aes加密">java使用AES加密</h4>
+
+<h5 id="aescryptojava">AesCrypto.java</h5>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="nn">com.emoyc.note.common.util.encryption.aes</span><span class="o">;</span>
+
+
+<span class="kn">import</span> <span class="nn">javax.crypto.Cipher</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">javax.crypto.KeyGenerator</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">javax.crypto.spec.IvParameterSpec</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">javax.crypto.spec.SecretKeySpec</span><span class="o">;</span>
+
+<span class="cm">/**
+ * AES加密
+ * @author Narule
+ *
+ */</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">AesCrypto</span> <span class="o">{</span>
+	
+	<span class="cm">/**
+	 * AES加密模式
+	 */</span>
+	
+	<span class="kd">private</span> <span class="kd">static</span> <span class="kd">final</span> <span class="nc">String</span> <span class="no">ECB_MODE</span> <span class="o">=</span> <span class="s">"AES/ECB/PKCS5Padding"</span><span class="o">;</span>
+
+	<span class="kd">private</span> <span class="kd">static</span> <span class="kd">final</span> <span class="nc">String</span> <span class="no">CBC_MODE</span> <span class="o">=</span> <span class="s">"AES/CBC/PKCS5Padding"</span><span class="o">;</span>
+	
+	
+	<span class="cm">/**
+	 * AES ECB模式加密
+     * @param content 待加密的内容 
+     * @param encryptKey 加密密钥 
+     * @return 加密后的byte[] 
+     * @throws Exception 
+     */</span>  
+    <span class="kd">public</span> <span class="kd">static</span> <span class="kt">byte</span><span class="o">[]</span> <span class="nf">aesEncryptToBytes_ECB</span><span class="o">(</span><span class="kt">byte</span><span class="o">[]</span> <span class="n">contentBytes</span><span class="o">,</span> <span class="kt">byte</span><span class="o">[]</span> <span class="n">keyBytes</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">Exception</span> <span class="o">{</span>  
+        <span class="nc">KeyGenerator</span> <span class="n">kgen</span> <span class="o">=</span> <span class="nc">KeyGenerator</span><span class="o">.</span><span class="na">getInstance</span><span class="o">(</span><span class="s">"AES"</span><span class="o">);</span>  
+        <span class="n">kgen</span><span class="o">.</span><span class="na">init</span><span class="o">(</span><span class="mi">128</span><span class="o">);</span>  
+        <span class="nc">Cipher</span> <span class="n">cipher</span> <span class="o">=</span> <span class="nc">Cipher</span><span class="o">.</span><span class="na">getInstance</span><span class="o">(</span><span class="no">ECB_MODE</span><span class="o">);</span>  
+        <span class="n">cipher</span><span class="o">.</span><span class="na">init</span><span class="o">(</span><span class="nc">Cipher</span><span class="o">.</span><span class="na">ENCRYPT_MODE</span><span class="o">,</span> <span class="k">new</span> <span class="nc">SecretKeySpec</span><span class="o">(</span><span class="n">keyBytes</span><span class="o">,</span> <span class="s">"AES"</span><span class="o">));</span>  
+        <span class="k">return</span> <span class="n">cipher</span><span class="o">.</span><span class="na">doFinal</span><span class="o">(</span><span class="n">contentBytes</span><span class="o">);</span>
+    <span class="o">}</span> 
+	
+	<span class="cm">/**
+	 * AES ECB模式解密
+	 * @param encryptBytes 待解密的byte[] 
+     * @param decryptKey 解密密钥 
+     * @return 解密后的String 
+     * @throws Exception 
+     */</span>  
+    <span class="kd">public</span> <span class="kd">static</span> <span class="kt">byte</span><span class="o">[]</span> <span class="nf">aesDecryptByBytes_ECB</span><span class="o">(</span><span class="kt">byte</span><span class="o">[]</span> <span class="n">encryptBytes</span><span class="o">,</span> <span class="kt">byte</span><span class="o">[]</span> <span class="n">keyBytes</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">Exception</span> <span class="o">{</span>  
+        <span class="nc">KeyGenerator</span> <span class="n">kgen</span> <span class="o">=</span> <span class="nc">KeyGenerator</span><span class="o">.</span><span class="na">getInstance</span><span class="o">(</span><span class="s">"AES"</span><span class="o">);</span>  
+        <span class="n">kgen</span><span class="o">.</span><span class="na">init</span><span class="o">(</span><span class="mi">128</span><span class="o">);</span>
+        <span class="nc">Cipher</span> <span class="n">cipher</span> <span class="o">=</span> <span class="nc">Cipher</span><span class="o">.</span><span class="na">getInstance</span><span class="o">(</span><span class="no">ECB_MODE</span><span class="o">);</span>  
+        <span class="n">cipher</span><span class="o">.</span><span class="na">init</span><span class="o">(</span><span class="nc">Cipher</span><span class="o">.</span><span class="na">DECRYPT_MODE</span><span class="o">,</span> <span class="k">new</span> <span class="nc">SecretKeySpec</span><span class="o">(</span><span class="n">keyBytes</span><span class="o">,</span> <span class="s">"AES"</span><span class="o">));</span>  
+        <span class="k">return</span> <span class="n">cipher</span><span class="o">.</span><span class="na">doFinal</span><span class="o">(</span><span class="n">encryptBytes</span><span class="o">);</span>
+    <span class="o">}</span>  
+	
+    
+	
+	<span class="cm">/**
+	 * AES CBC模式加密
+	 * @throws Exception 
+	 */</span>
+    <span class="kd">public</span> <span class="kd">static</span> <span class="kt">byte</span><span class="o">[]</span> <span class="nf">aesEncryptToBytes_CBC</span><span class="o">(</span><span class="kt">byte</span><span class="o">[]</span> <span class="n">encryptBytes</span><span class="o">,</span> <span class="kt">byte</span><span class="o">[]</span> <span class="n">ivBytes</span><span class="o">,</span><span class="kt">byte</span><span class="o">[]</span> <span class="n">keyBytes</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">Exception</span> <span class="o">{</span>
+		<span class="nc">SecretKeySpec</span> <span class="n">key</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">SecretKeySpec</span><span class="o">(</span><span class="n">keyBytes</span><span class="o">,</span> <span class="s">"AES"</span><span class="o">);</span>
+		<span class="nc">IvParameterSpec</span> <span class="no">IV</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">IvParameterSpec</span><span class="o">(</span><span class="n">ivBytes</span><span class="o">);</span>
+		<span class="nc">Cipher</span> <span class="n">c</span> <span class="o">=</span> <span class="nc">Cipher</span><span class="o">.</span><span class="na">getInstance</span><span class="o">(</span><span class="no">CBC_MODE</span><span class="o">);</span>
+		<span class="n">c</span><span class="o">.</span><span class="na">init</span><span class="o">(</span><span class="nc">Cipher</span><span class="o">.</span><span class="na">ENCRYPT_MODE</span><span class="o">,</span> <span class="n">key</span><span class="o">,</span> <span class="no">IV</span><span class="o">);</span>
+		<span class="k">return</span> <span class="n">c</span><span class="o">.</span><span class="na">doFinal</span><span class="o">(</span><span class="n">encryptBytes</span><span class="o">);</span>
+	<span class="o">}</span>
+	
+	<span class="cm">/**
+	 * AES CBC模式解密
+	 * @throws Exception 
+	 */</span>
+    <span class="kd">public</span> <span class="kd">static</span> <span class="kt">byte</span><span class="o">[]</span> <span class="nf">aesDecryptByBytes_CBC</span><span class="o">(</span><span class="kt">byte</span><span class="o">[]</span> <span class="n">decryptBytes</span><span class="o">,</span> <span class="kt">byte</span><span class="o">[]</span> <span class="n">ivBytes</span><span class="o">,</span><span class="kt">byte</span><span class="o">[]</span> <span class="n">keyBytes</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">Exception</span> <span class="o">{</span>  
+    	<span class="nc">SecretKeySpec</span> <span class="n">key</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">SecretKeySpec</span><span class="o">(</span><span class="n">keyBytes</span><span class="o">,</span> <span class="s">"AES"</span><span class="o">);</span>
+		<span class="nc">IvParameterSpec</span> <span class="no">IV</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">IvParameterSpec</span><span class="o">(</span><span class="n">ivBytes</span><span class="o">);</span>
+    	<span class="nc">Cipher</span> <span class="n">c</span> <span class="o">=</span> <span class="nc">Cipher</span><span class="o">.</span><span class="na">getInstance</span><span class="o">(</span><span class="no">CBC_MODE</span><span class="o">);</span>
+        <span class="n">c</span><span class="o">.</span><span class="na">init</span><span class="o">(</span><span class="nc">Cipher</span><span class="o">.</span><span class="na">DECRYPT_MODE</span><span class="o">,</span> <span class="n">key</span><span class="o">,</span> <span class="no">IV</span><span class="o">);</span>
+        <span class="k">return</span> <span class="n">c</span><span class="o">.</span><span class="na">doFinal</span><span class="o">(</span><span class="n">decryptBytes</span><span class="o">);</span> 
+    <span class="o">}</span> 
+    
+<span class="o">}</span>
+
+</code></pre></div></div>
+
+<h5 id="aesutiljava">AesUtil.java</h5>
+
+<details>
+	<summary>code</summary>
+
+```java
+package com.emoyc.note.common.util.encryption.aes;
+
+
+/**
+ * AES 加密整合工具类
+ * @author Narule
+ *
+ */
+public class AesUtil {
+	
+	/**
+	 * AES临时KEY
+	 */
+	private static final String KEY = "jdkcnvlao903nhfl";
+	
+	
+	/**
+	 * AES-ECB 加密模式
+	 * @param content //原文
+	 * @param key
+	 * @return _encrypt //密文
+	 * @throws Exception
+	 */
+	public final static String aesEncrypt_ECB(String content,String key) throws Exception {
+		return base64Encode(
+					AesCrypto.aesEncryptToBytes_ECB(content.getBytes(), key.getBytes())
+				);
+	}
+	
+	/**
+	 * AES-ECB 解密模式
+	 * @param content //密文
+	 * @param key
+	 * @return _decrypt //原文
+	 * @throws Exception
+	 */
+	public final static String aesDecrypt_ECB(String content,String key) throws Exception {
+		return new String(
+					AesCrypto.aesDecryptByBytes_ECB(base64Decode(content), key.getBytes())
+				);
+	}
+	
+	/**
+	 * AES-CBC 加密模式
+	 * @param content //原文
+	 * @param key
+	 * @return _encrypt //密文
+	 * @throws Exception
+	 */
+	public final static String aesEncrypt_CBC(String content,String key) throws Exception {
+		
+		return base64Encode(
+					AesCrypto.aesEncryptToBytes_CBC(content.getBytes(), key.getBytes(),key.getBytes())
+				);
+	}
+	
+	/**
+	 * AES-CBC 解密模式
+	 * @param content //密文
+	 * @param key
+	 * @return _decrypt //原文
+	 * @throws Exception
+	 */
+	public final static String aesDecrypt_CBC(String content,String key) throws Exception {
+		return new String(
+					AesCrypto.aesDecryptByBytes_CBC(base64Decode(content), key.getBytes(), key.getBytes())
+				);
+	}
+	
+	
+	 /** 
+     * base 64 encode 
+     * @param bytes 待编码的byte[] 
+     * @return 编码后的base 64 code 
+     */  
+    public static String base64Encode(byte[] bytes){  
+    	return java.util.Base64.getEncoder().encodeToString(bytes);
+    }  
+  
+    /** 
+     * base 64 decode 
+     * @param base64Code 待解码的base 64 code 
+     * @return 解码后的byte[] 
+     * @throws Exception 
+     */  
+    public static byte[] base64Decode(String base64Code) throws Exception{  
+    	 return (base64Code == null || base64Code.length() == 0) ? null : java.util.Base64.getDecoder().decode(base64Code);
+    }
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    public static void main(String[] args) {
+    	String string = "吴楠予";
+		testAes_ECB(string);
+		testAes_CBC(string);
+	}
+
+	private static void testAes_ECB(String string) {
+		System.out.println("===================ECB加密=================");
+		System.out.println("明文：" );
+		System.out.println(string);
+		String aesEncrypt_ECB = null;
+		String aesDecrypt_ECB = null;
+		try {
+			aesEncrypt_ECB = aesEncrypt_ECB(string, KEY);
+			System.out.println("密文：");
+			System.out.println(aesEncrypt_ECB);
+			aesDecrypt_ECB = aesDecrypt_ECB(aesEncrypt_ECB, KEY);
+			System.out.println("解密后：");
+			System.out.println(aesDecrypt_ECB);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	private static void testAes_CBC(String string) {
+		System.out.println("===================CBC加密=================");
+		System.out.println("明文：" );
+		System.out.println(string);
+		String aesEncrypt_CBC = null;
+		String aesDecrypt_CBC = null;
+		try {
+			aesEncrypt_CBC = aesEncrypt_CBC(string, KEY);
+			System.out.println("密文：");
+			System.out.println(aesEncrypt_CBC);
+			aesDecrypt_CBC = aesDecrypt_CBC(aesEncrypt_CBC, KEY);
+			System.out.println("解密后：");
+			System.out.println(aesDecrypt_CBC);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	} 
+    
+}
+```
+
+</details>
+
+<h5 id="加解密test">加解密Test</h5>
+
+<p>运行AesUtil的main方法：</p>
+
+<p><img src="https://img2020.cnblogs.com/blog/1436620/202005/1436620-20200522141411759-2056476981.png" alt="" /></p>
+
+<h2 id="非对称加密">非对称加密</h2>
+
+<h3 id="rsa">RSA</h3>
+
+<blockquote>
+  <p>参考文章</p>
+
+  <p>http://www.ruanyifeng.com/blog/2013/06/rsa_algorithm_part_one.html</p>
+
+  <p>http://www.ruanyifeng.com/blog/2013/07/rsa_algorithm_part_two.html</p>
+
+  <p>https://www.jianshu.com/p/ca659dbc6f46</p>
+</blockquote>
+
+<p>通过上面的文章自己实践测试，数字小，但是不影响</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+p = 3 q = 5
+
+n = 3 * 5 = 15
+
+n' = 2 * 4 = 8
+
+选一个数 e  与 8 互质 
+e = 7
+
+7 * x + 8 * y = 1
+
+x = 7 = d
+y = -6
+
+
+加密 3
+
+3^7 = 2187
+
+2187%15  = 12
+
+12^7%15 = 3
+
+
+
+e = ３
+
+3 * x + 8 * y = 1
+
+x = 11 = d
+y = -4
+
+
+加密 3
+
+3^3 = 27
+
+27%15  = 12
+
+12^11%15 = 3
+</code></pre></div></div>
+
+<h4 id="java使用rsa加密工具">java使用RSA加密工具</h4>
+
+<h5 id="rsautiljava">RsaUtil.java</h5>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="nn">com.emoyc.note.common.util.encryption.rsa</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">java.io.ByteArrayInputStream</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.io.ByteArrayOutputStream</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.io.File</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.io.FileInputStream</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.io.FileOutputStream</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.io.InputStream</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.io.OutputStream</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.security.KeyPair</span><span class="o">;</span>
+
+<span class="cm">/**
+ * RSA 加密工具整合类
+ * @author Narule
+ *
+ */</span>
+
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">RsaUtil</span> <span class="o">{</span>
+	
+	<span class="kd">private</span> <span class="kd">static</span> <span class="kt">byte</span><span class="o">[]</span> <span class="n">publicKey</span><span class="o">;</span>
+	<span class="kd">private</span> <span class="kd">static</span> <span class="kt">byte</span><span class="o">[]</span> <span class="n">privateKey</span><span class="o">;</span>
+
+	<span class="cm">/**
+	 * main方法 - RSA 加密解密测试
+	 * @param args
+	 * @throws Exception
+	 */</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">main</span><span class="o">(</span><span class="nc">String</span><span class="o">[]</span> <span class="n">args</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">Exception</span> <span class="o">{</span>
+		<span class="n">createKey</span><span class="o">();</span>
+		<span class="n">initKey</span><span class="o">();</span>
+		<span class="nc">String</span> <span class="n">str</span> <span class="o">=</span> <span class="s">"吴楠予"</span><span class="o">;</span>
+		<span class="kt">byte</span><span class="o">[]</span> <span class="n">encryptData</span> <span class="o">=</span> <span class="nc">RsaCrypto</span><span class="o">.</span><span class="na">encryptData</span><span class="o">(</span><span class="n">str</span><span class="o">.</span><span class="na">getBytes</span><span class="o">(),</span> <span class="n">publicKey</span><span class="o">);</span>
+		<span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"=========加密==============="</span><span class="o">);</span>
+		<span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="k">new</span> <span class="nc">String</span><span class="o">(</span><span class="n">encryptData</span><span class="o">));</span>
+		<span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"=========解密==============="</span><span class="o">);</span>
+		<span class="kt">byte</span><span class="o">[]</span> <span class="n">decryptData</span> <span class="o">=</span> <span class="nc">RsaCrypto</span><span class="o">.</span><span class="na">decryptData</span><span class="o">(</span><span class="n">encryptData</span><span class="o">,</span> <span class="n">privateKey</span><span class="o">);</span>
+		<span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="k">new</span> <span class="nc">String</span><span class="o">(</span><span class="n">decryptData</span><span class="o">));</span>
+	<span class="o">}</span>
+	
+	<span class="cm">/**
+	 * createKey 创建RSA 密钥对
+	 */</span>
+	<span class="kd">private</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">createKey</span><span class="o">()</span> <span class="o">{</span>
+    	<span class="k">try</span> <span class="o">{</span>
+    		<span class="nc">KeyPair</span> <span class="n">generateKeyPair</span> <span class="o">=</span> <span class="nc">RsaCrypto</span><span class="o">.</span><span class="na">creatKey</span><span class="o">();</span>
+    		<span class="n">byteToFile</span><span class="o">(</span><span class="n">generateKeyPair</span><span class="o">.</span><span class="na">getPublic</span><span class="o">().</span><span class="na">getEncoded</span><span class="o">(),</span> <span class="s">"./rsa_2048_pubkey.txt"</span><span class="o">);</span>
+    		<span class="n">byteToFile</span><span class="o">(</span><span class="n">generateKeyPair</span><span class="o">.</span><span class="na">getPrivate</span><span class="o">().</span><span class="na">getEncoded</span><span class="o">(),</span> <span class="s">"./rsa_2048_prikey.txt"</span><span class="o">);</span>
+    	<span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">Exception</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+    		<span class="n">e</span><span class="o">.</span><span class="na">printStackTrace</span><span class="o">();</span>
+    	<span class="o">}</span>
+    <span class="o">}</span>
+	
+	<span class="kd">public</span> <span class="kd">static</span> <span class="nc">KeyPair</span> <span class="nf">getOneRsaKey</span><span class="o">()</span> <span class="o">{</span>
+    	<span class="k">try</span> <span class="o">{</span>
+    		<span class="k">return</span> <span class="nc">RsaCrypto</span><span class="o">.</span><span class="na">creatKey</span><span class="o">();</span>
+    	<span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">Exception</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+    		<span class="n">e</span><span class="o">.</span><span class="na">printStackTrace</span><span class="o">();</span>
+    	<span class="o">}</span>
+    	<span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+    <span class="o">}</span>
+	<span class="cm">/**
+	 * readKey 读取密钥文件
+	 */</span>
+	<span class="kd">private</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">initKey</span><span class="o">()</span> <span class="o">{</span>
+		<span class="k">try</span> <span class="o">{</span>
+			<span class="n">publicKey</span> <span class="o">=</span>  <span class="n">fileToByte</span><span class="o">(</span><span class="s">"./rsa_2048_pubkey.txt"</span><span class="o">);</span>
+			<span class="n">privateKey</span> <span class="o">=</span>  <span class="n">fileToByte</span><span class="o">(</span><span class="s">"./rsa_2048_prikey.txt"</span><span class="o">);</span>
+		<span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">Exception</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+			<span class="n">e</span><span class="o">.</span><span class="na">printStackTrace</span><span class="o">();</span>
+		<span class="o">}</span>
+	<span class="o">}</span>
+    
+    
+    
+    <span class="cm">/**
+     * byte-&gt;file 二进制数据转文件
+     * @param bytes
+     * @param filePath
+     * @throws Exception
+     */</span>
+    <span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">byteToFile</span><span class="o">(</span><span class="kt">byte</span><span class="o">[]</span> <span class="n">bytes</span><span class="o">,</span> <span class="nc">String</span> <span class="n">filePath</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">Exception</span> <span class="o">{</span>
+        <span class="nc">InputStream</span> <span class="n">in</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ByteArrayInputStream</span><span class="o">(</span><span class="n">bytes</span><span class="o">);</span>
+        <span class="nc">File</span> <span class="n">destFile</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">File</span><span class="o">(</span><span class="n">filePath</span><span class="o">);</span>
+        <span class="k">if</span> <span class="o">(!</span><span class="n">destFile</span><span class="o">.</span><span class="na">getParentFile</span><span class="o">().</span><span class="na">exists</span><span class="o">())</span> <span class="o">{</span>
+            <span class="n">destFile</span><span class="o">.</span><span class="na">getParentFile</span><span class="o">().</span><span class="na">mkdirs</span><span class="o">();</span>
+        <span class="o">}</span>
+        <span class="n">destFile</span><span class="o">.</span><span class="na">createNewFile</span><span class="o">();</span>
+        <span class="nc">OutputStream</span> <span class="n">out</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">FileOutputStream</span><span class="o">(</span><span class="n">destFile</span><span class="o">);</span>
+        <span class="kt">byte</span><span class="o">[]</span> <span class="n">cache</span> <span class="o">=</span> <span class="k">new</span> <span class="kt">byte</span><span class="o">[</span><span class="mi">2048</span><span class="o">];</span>
+        <span class="kt">int</span> <span class="n">nRead</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+        <span class="k">while</span> <span class="o">((</span><span class="n">nRead</span> <span class="o">=</span> <span class="n">in</span><span class="o">.</span><span class="na">read</span><span class="o">(</span><span class="n">cache</span><span class="o">))</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">out</span><span class="o">.</span><span class="na">write</span><span class="o">(</span><span class="n">cache</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="n">nRead</span><span class="o">);</span>
+            <span class="n">out</span><span class="o">.</span><span class="na">flush</span><span class="o">();</span>
+        <span class="o">}</span>
+        <span class="n">out</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+        <span class="n">in</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+    <span class="o">}</span>
+    
+    
+    <span class="cm">/**
+     * file-&gt;byte 文件转二进制
+     * @param filePath
+     * @return
+     * @throws Exception
+     */</span>
+    <span class="kd">public</span> <span class="kd">static</span> <span class="kt">byte</span><span class="o">[]</span> <span class="nf">fileToByte</span><span class="o">(</span><span class="nc">String</span> <span class="n">filePath</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">Exception</span> <span class="o">{</span>
+        <span class="kt">byte</span><span class="o">[]</span> <span class="n">data</span> <span class="o">=</span> <span class="k">new</span> <span class="kt">byte</span><span class="o">[</span><span class="mi">0</span><span class="o">];</span>
+        <span class="nc">File</span> <span class="n">file</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">File</span><span class="o">(</span><span class="n">filePath</span><span class="o">);</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">file</span><span class="o">.</span><span class="na">exists</span><span class="o">())</span> <span class="o">{</span>
+            <span class="nc">FileInputStream</span> <span class="n">in</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">FileInputStream</span><span class="o">(</span><span class="n">file</span><span class="o">);</span>
+            <span class="nc">ByteArrayOutputStream</span> <span class="n">out</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ByteArrayOutputStream</span><span class="o">(</span><span class="mi">2048</span><span class="o">);</span>
+            <span class="kt">byte</span><span class="o">[]</span> <span class="n">cache</span> <span class="o">=</span> <span class="k">new</span> <span class="kt">byte</span><span class="o">[</span><span class="mi">2048</span><span class="o">];</span>
+            <span class="kt">int</span> <span class="n">nRead</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+            <span class="k">while</span> <span class="o">((</span><span class="n">nRead</span> <span class="o">=</span> <span class="n">in</span><span class="o">.</span><span class="na">read</span><span class="o">(</span><span class="n">cache</span><span class="o">))</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">out</span><span class="o">.</span><span class="na">write</span><span class="o">(</span><span class="n">cache</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="n">nRead</span><span class="o">);</span>
+                <span class="n">out</span><span class="o">.</span><span class="na">flush</span><span class="o">();</span>
+            <span class="o">}</span>
+            <span class="n">out</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+            <span class="n">in</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="na">toByteArray</span><span class="o">();</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="n">data</span><span class="o">;</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+
+</code></pre></div></div>
+
+<h5 id="rsacryptojava">RsaCrypto.java</h5>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="nn">com.emoyc.note.common.util.encryption.rsa</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">java.io.ByteArrayOutputStream</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.io.IOException</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.security.Key</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.security.KeyFactory</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.security.KeyPair</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.security.KeyPairGenerator</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.security.PublicKey</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.security.spec.PKCS8EncodedKeySpec</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.security.spec.X509EncodedKeySpec</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">javax.crypto.Cipher</span><span class="o">;</span>
+
+
+<span class="cm">/**
+ * RSA 加密解密类
+ * @author Narule
+ *
+ */</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">RsaCrypto</span> <span class="o">{</span>
+
+	<span class="kd">private</span> <span class="kd">static</span> <span class="kd">final</span> <span class="nc">String</span> <span class="no">ALGORITHM_RSA</span> <span class="o">=</span> <span class="s">"RSA"</span><span class="o">;</span>
+
+	<span class="cm">/** */</span>
+	<span class="cm">/**
+	 * RSA最大加密明文大小
+	 */</span>
+	<span class="c1">// 2048</span>
+	<span class="kd">private</span> <span class="kd">static</span> <span class="kd">final</span> <span class="kt">int</span> <span class="no">MAX_ENCRYPT_BLOCK</span> <span class="o">=</span> <span class="mi">245</span><span class="o">;</span>
+
+	<span class="cm">/** */</span>
+	<span class="cm">/**
+	 * RSA最大解密密文大小
+	 */</span>
+	<span class="c1">// 2048</span>
+	<span class="kd">private</span> <span class="kd">static</span> <span class="kd">final</span> <span class="kt">int</span> <span class="no">MAX_DECRYPT_BLOCK</span> <span class="o">=</span> <span class="mi">256</span><span class="o">;</span>
+
+
+	
+	<span class="kd">public</span> <span class="kd">static</span> <span class="nc">KeyPair</span> <span class="nf">creatKey</span><span class="o">()</span> <span class="kd">throws</span> <span class="nc">Exception</span> <span class="o">{</span>
+		<span class="nc">KeyPairGenerator</span> <span class="n">keyPairGenerator</span> <span class="o">=</span> <span class="nc">KeyPairGenerator</span><span class="o">.</span><span class="na">getInstance</span><span class="o">(</span><span class="no">ALGORITHM_RSA</span><span class="o">);</span>
+		<span class="n">keyPairGenerator</span><span class="o">.</span><span class="na">initialize</span><span class="o">(</span><span class="mi">2048</span><span class="o">);</span>
+		<span class="k">return</span> <span class="n">keyPairGenerator</span><span class="o">.</span><span class="na">generateKeyPair</span><span class="o">();</span>
+	<span class="o">}</span>
+	
+	
+	<span class="cm">/**
+	 * RSA 公钥加密
+	 * 
+	 * @param data
+	 * @param key
+	 * @return
+	 * @throws Exception
+	 */</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kt">byte</span><span class="o">[]</span> <span class="nf">encryptData</span><span class="o">(</span><span class="kt">byte</span><span class="o">[]</span> <span class="n">data</span><span class="o">,</span> <span class="kt">byte</span><span class="o">[]</span> <span class="n">key</span><span class="o">)</span> <span class="o">{</span>
+		<span class="nc">ByteArrayOutputStream</span> <span class="n">out</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+		<span class="kt">byte</span><span class="o">[]</span> <span class="n">encryptedData</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+		<span class="k">try</span> <span class="o">{</span>
+			<span class="nc">X509EncodedKeySpec</span> <span class="n">x509KeySpec</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">X509EncodedKeySpec</span><span class="o">(</span><span class="n">key</span><span class="o">);</span>
+			<span class="nc">KeyFactory</span> <span class="n">keyFactory</span> <span class="o">=</span> <span class="nc">KeyFactory</span><span class="o">.</span><span class="na">getInstance</span><span class="o">(</span><span class="no">ALGORITHM_RSA</span><span class="o">);</span>
+			<span class="nc">PublicKey</span> <span class="n">generatePublic</span> <span class="o">=</span> <span class="n">keyFactory</span><span class="o">.</span><span class="na">generatePublic</span><span class="o">(</span><span class="n">x509KeySpec</span><span class="o">);</span>
+
+			<span class="c1">// 对数据加密</span>
+			<span class="nc">Cipher</span> <span class="n">cipher</span> <span class="o">=</span> <span class="nc">Cipher</span><span class="o">.</span><span class="na">getInstance</span><span class="o">(</span><span class="n">keyFactory</span><span class="o">.</span><span class="na">getAlgorithm</span><span class="o">());</span>
+			<span class="n">cipher</span><span class="o">.</span><span class="na">init</span><span class="o">(</span><span class="nc">Cipher</span><span class="o">.</span><span class="na">ENCRYPT_MODE</span><span class="o">,</span> <span class="n">generatePublic</span><span class="o">);</span>
+			<span class="kt">int</span> <span class="n">inputLen</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="na">length</span><span class="o">;</span>
+			<span class="n">out</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ByteArrayOutputStream</span><span class="o">();</span>
+			<span class="kt">int</span> <span class="n">offSet</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+			<span class="kt">byte</span><span class="o">[]</span> <span class="n">cache</span><span class="o">;</span>
+			<span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+			<span class="c1">// 对数据分段加密</span>
+			<span class="k">while</span> <span class="o">(</span><span class="n">inputLen</span> <span class="o">-</span> <span class="n">offSet</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+				<span class="k">if</span> <span class="o">(</span><span class="n">inputLen</span> <span class="o">-</span> <span class="n">offSet</span> <span class="o">&gt;</span> <span class="no">MAX_ENCRYPT_BLOCK</span><span class="o">)</span> <span class="o">{</span>
+					<span class="n">cache</span> <span class="o">=</span> <span class="n">cipher</span><span class="o">.</span><span class="na">doFinal</span><span class="o">(</span><span class="n">data</span><span class="o">,</span> <span class="n">offSet</span><span class="o">,</span> <span class="no">MAX_ENCRYPT_BLOCK</span><span class="o">);</span>
+				<span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+					<span class="n">cache</span> <span class="o">=</span> <span class="n">cipher</span><span class="o">.</span><span class="na">doFinal</span><span class="o">(</span><span class="n">data</span><span class="o">,</span> <span class="n">offSet</span><span class="o">,</span> <span class="n">inputLen</span> <span class="o">-</span> <span class="n">offSet</span><span class="o">);</span>
+				<span class="o">}</span>
+				<span class="n">out</span><span class="o">.</span><span class="na">write</span><span class="o">(</span><span class="n">cache</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="n">cache</span><span class="o">.</span><span class="na">length</span><span class="o">);</span>
+				<span class="n">i</span><span class="o">++;</span>
+				<span class="n">offSet</span> <span class="o">=</span> <span class="n">i</span> <span class="o">*</span> <span class="no">MAX_ENCRYPT_BLOCK</span><span class="o">;</span>
+			<span class="o">}</span>
+			<span class="n">encryptedData</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="na">toByteArray</span><span class="o">();</span>
+			<span class="n">out</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+		<span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">Exception</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+			<span class="n">e</span><span class="o">.</span><span class="na">printStackTrace</span><span class="o">();</span>
+		<span class="o">}</span> <span class="k">finally</span> <span class="o">{</span>
+			<span class="c1">// 防止流未关闭 浪费占用资源</span>
+			<span class="k">if</span> <span class="o">(</span><span class="n">out</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+				<span class="k">try</span> <span class="o">{</span>
+					<span class="n">out</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+				<span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">IOException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+					<span class="n">e</span><span class="o">.</span><span class="na">printStackTrace</span><span class="o">();</span>
+				<span class="o">}</span>
+			<span class="o">}</span>
+		<span class="o">}</span>
+		<span class="k">return</span> <span class="n">encryptedData</span><span class="o">;</span>
+	<span class="o">}</span>
+
+	<span class="cm">/**
+	 * RSA 私钥解密
+	 * 
+	 * @param data
+	 * @param key
+	 * @return
+	 * @throws Exception
+	 */</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kt">byte</span><span class="o">[]</span> <span class="nf">decryptData</span><span class="o">(</span><span class="kt">byte</span><span class="o">[]</span> <span class="n">data</span><span class="o">,</span> <span class="kt">byte</span><span class="o">[]</span> <span class="n">key</span><span class="o">)</span> <span class="o">{</span>
+		<span class="nc">ByteArrayOutputStream</span> <span class="n">out</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+		<span class="kt">byte</span><span class="o">[]</span> <span class="n">decryptedData</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+		<span class="k">try</span> <span class="o">{</span>
+			<span class="nc">PKCS8EncodedKeySpec</span> <span class="n">pkcs8KeySpec</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">PKCS8EncodedKeySpec</span><span class="o">(</span><span class="n">key</span><span class="o">);</span>
+			<span class="nc">KeyFactory</span> <span class="n">keyFactory</span> <span class="o">=</span> <span class="nc">KeyFactory</span><span class="o">.</span><span class="na">getInstance</span><span class="o">(</span><span class="no">ALGORITHM_RSA</span><span class="o">);</span>
+			<span class="nc">Key</span> <span class="n">privateK</span> <span class="o">=</span> <span class="n">keyFactory</span><span class="o">.</span><span class="na">generatePrivate</span><span class="o">(</span><span class="n">pkcs8KeySpec</span><span class="o">);</span>
+			<span class="nc">Cipher</span> <span class="n">cipher</span> <span class="o">=</span> <span class="nc">Cipher</span><span class="o">.</span><span class="na">getInstance</span><span class="o">(</span><span class="n">keyFactory</span><span class="o">.</span><span class="na">getAlgorithm</span><span class="o">());</span>
+			<span class="n">cipher</span><span class="o">.</span><span class="na">init</span><span class="o">(</span><span class="nc">Cipher</span><span class="o">.</span><span class="na">DECRYPT_MODE</span><span class="o">,</span> <span class="n">privateK</span><span class="o">);</span>
+			<span class="n">out</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ByteArrayOutputStream</span><span class="o">();</span>
+			<span class="kt">int</span> <span class="n">inputLen</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="na">length</span><span class="o">;</span>
+			<span class="kt">int</span> <span class="n">offSet</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+			<span class="kt">byte</span><span class="o">[]</span> <span class="n">cache</span><span class="o">;</span>
+			<span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+			<span class="c1">// 对数据分段解密</span>
+			<span class="k">while</span> <span class="o">(</span><span class="n">inputLen</span> <span class="o">-</span> <span class="n">offSet</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+				<span class="k">if</span> <span class="o">(</span><span class="n">inputLen</span> <span class="o">-</span> <span class="n">offSet</span> <span class="o">&gt;</span> <span class="no">MAX_DECRYPT_BLOCK</span><span class="o">)</span> <span class="o">{</span>
+					<span class="n">cache</span> <span class="o">=</span> <span class="n">cipher</span><span class="o">.</span><span class="na">doFinal</span><span class="o">(</span><span class="n">data</span><span class="o">,</span> <span class="n">offSet</span><span class="o">,</span> <span class="no">MAX_DECRYPT_BLOCK</span><span class="o">);</span>
+				<span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+					<span class="n">cache</span> <span class="o">=</span> <span class="n">cipher</span><span class="o">.</span><span class="na">doFinal</span><span class="o">(</span><span class="n">data</span><span class="o">,</span> <span class="n">offSet</span><span class="o">,</span> <span class="n">inputLen</span> <span class="o">-</span> <span class="n">offSet</span><span class="o">);</span>
+				<span class="o">}</span>
+				<span class="n">out</span><span class="o">.</span><span class="na">write</span><span class="o">(</span><span class="n">cache</span><span class="o">,</span> <span class="mi">0</span><span class="o">,</span> <span class="n">cache</span><span class="o">.</span><span class="na">length</span><span class="o">);</span>
+				<span class="n">i</span><span class="o">++;</span>
+				<span class="n">offSet</span> <span class="o">=</span> <span class="n">i</span> <span class="o">*</span> <span class="no">MAX_DECRYPT_BLOCK</span><span class="o">;</span>
+			<span class="o">}</span>
+			<span class="n">decryptedData</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="na">toByteArray</span><span class="o">();</span>
+			<span class="n">out</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+		<span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">Exception</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+			<span class="n">e</span><span class="o">.</span><span class="na">printStackTrace</span><span class="o">();</span>
+		<span class="o">}</span> <span class="k">finally</span> <span class="o">{</span>
+			<span class="c1">// 防止流未关闭 浪费占用资源</span>
+			<span class="k">if</span> <span class="o">(</span><span class="n">out</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+				<span class="k">try</span> <span class="o">{</span>
+					<span class="n">out</span><span class="o">.</span><span class="na">close</span><span class="o">();</span>
+				<span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">IOException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+					<span class="n">e</span><span class="o">.</span><span class="na">printStackTrace</span><span class="o">();</span>
+				<span class="o">}</span>
+			<span class="o">}</span>
+		<span class="o">}</span>
+		<span class="k">return</span> <span class="n">decryptedData</span><span class="o">;</span>
+	<span class="o">}</span>
+
+<span class="o">}</span>
+
+</code></pre></div></div>
+
+<h2 id="其他">其他</h2>
+:ET
