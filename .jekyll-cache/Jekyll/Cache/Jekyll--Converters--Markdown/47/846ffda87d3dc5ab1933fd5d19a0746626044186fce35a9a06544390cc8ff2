@@ -1,0 +1,16 @@
+I"�<h1 id="oracle">Oracle</h1>
+
+<h1 id="表结构操作">表结构操作</h1>
+
+<h2 id="创建表">创建表</h2>
+<p>```sql
+create table tableName
+    (id varchar2(36) primary key,
+    name varchar2(36),
+    age number(12,2),
+    createDate date,
+    modifyDate date);</p>
+
+<p>–    创建一张表，表名：tableName, 
+–    字段 id 字符串类型 主键，name 字符串类型普通字段，age 数字类型，createDate 创建日期，modifyDate 修改日期</p>
+:ET

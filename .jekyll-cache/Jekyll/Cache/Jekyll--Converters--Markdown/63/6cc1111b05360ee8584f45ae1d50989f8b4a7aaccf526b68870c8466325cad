@@ -1,0 +1,390 @@
+I"pd<p>搭建博客能学习不少新知识，自定义功能，下面说说如何设计构建’’</p>
+
+<table>
+  <tbody>
+    <tr>
+      <td>Blog deployment design and construction</td>
+      <td>博客部署设计和构建</td>
+    </tr>
+  </tbody>
+</table>
+
+<blockquote>
+  <p>Convert markdown note files to blogs, and automatically update blog information</p>
+
+  <p>将markdown笔记文件转为博客，且能够自动更新博客信息</p>
+</blockquote>
+
+<p>博客可以用来记笔记或者发布文章，是一种信息载体，我们可以把一些信息放到博客，方便在网络环境查阅。</p>
+
+<p>最近打算搭建个人博客，已知网络上的公共博客网站有博客园（国内），github（全球）都挺好用的，本人有在用，博客园和github也有挂的时候（访问不了），情况很少；</p>
+
+<p>搭建博客能学习不少新知识，自定义功能，下面说说如何设计构建</p>
+
+<p><strong>GitHub源码地址：</strong> <a href="https://github.com/narule/Selfpublog">Selfpublog</a></p>
+
+<p>功能已经写好可以访问 <a href="http://narule.net/blog">narule.net/blog</a>  查看效果</p>
+
+<p>created html:<br />
+   <img src="https://github.com/narule/Selfpublog/blob/master/blogimage/selfpublogresult.PNG" alt="" /></p>
+
+<p>created blog json info:<br />
+   <img src="https://github.com/narule/Selfpublog/blob/master/blogimage/selfpublog-json.PNG" alt="" /></p>
+
+<p>blog pageIndex:<br />
+   <img src="https://github.com/narule/Selfpublog/blob/master/blogimage/indexfolder.PNG" alt="" /></p>
+
+<h2 id="object--功能">Object | 功能</h2>
+
+<ol>
+  <li>
+    <p>Blog site, the content is static files，all access static,reducing server pressure</p>
+
+    <p>博客网站，内容是静态文件，所有访问都是静态，减小服务器压力</p>
+  </li>
+  <li>
+    <p>Operating environment: Linux system, Easier to expand</p>
+
+    <p>运行环境：Linux 系统，更容易扩展</p>
+  </li>
+  <li>
+    <p>Monitor folder changes through shell scripts, monitor the modification of markdown files under the folder, and automatically generate corresponding HTML directories and files</p>
+
+    <p>通过shell脚本监控文件夹变化，监控文件夹下markdown文件的修改，自动生成对应的HTML目录和文件</p>
+  </li>
+</ol>
+
+<h3 id="request--要求">Request | 要求</h3>
+
+<ol>
+  <li>不能有较多依赖，尽量简单，并且能够较好地扩展（包括前端js html，后端linux）</li>
+  <li>自动化，除了markdown文件需要人自己上传，其他任何事情包括文章信息更新都自动去完成</li>
+</ol>
+
+<p>markdown 个人认为是一种非常好的写作工具，markdown支持包括图片，表格，简单清晰。</p>
+
+<h2 id="overall-design-ideas--整体设计思路">Overall design ideas | 整体设计思路</h2>
+
+<blockquote>
+  <p>将写好的markdown文件放入特定文件夹，服务器获得文件信息，将文件转为html文件，并将信息存入文件，使首页能否访问到html文件</p>
+</blockquote>
+
+<ol>
+  <li>access：用静态访问，先有一个index.html文件作为博客访问首页，有一个bloginfo文件用于存放文章（markdown）信息，然后有一个js文件 用于读取bloginfo中的博客信息，并显示在首页</li>
+  <li>monitor: linux 运行一个监控程序,监控markdown文件夹下面的变化，有文件变化，就获得文件信息并将信息更新到bloginfo</li>
+  <li>markdown2html： 当有文件新增时，将文件转为HTML格式存入博客访问目录（如有markdown文件新增，通过工具将markdown转为html）</li>
+  <li>bloginfo: 生成html文件后，将新增的markdown文章信息更新到bloginfo文件中</li>
+</ol>
+
+<h2 id="specific-plan--具体实现">Specific plan | 具体实现</h2>
+
+<ol>
+  <li>accesspage：静态文件访问形式，nginx实现，文件以 html css js为主，index做导航页，js中执行博客信息处理逻辑</li>
+  <li>filemonitor：文档文件以及文件夹的创建删除等动作监控，使用inotify-tools在linux服务器后台监控</li>
+  <li>markdown2html：markdown文件转html文件，这里采用markdown2html-converter工具</li>
+  <li>bloginfo extraction：文章及文件夹信息整理分类，信息采用json文件存储，用jq对文件读写更新信息</li>
+</ol>
+
+<p>功能具体已经实现，本文主要讲linux服务器文件监控动作以及 markdown 文件转 html文件 实现</p>
+
+<h3 id="accesspage-网页">Accesspage| 网页</h3>
+
+<blockquote>
+  <p>博客的静态访问文件，包括文章信息；作为一个可以访问的网站，静态文件访问相对于动态，压力最小，访问也是较快速的</p>
+</blockquote>
+
+<h4 id="index-page--首页">Index Page | 首页</h4>
+
+<p>​	首页是访问博客首先显示的页面，应该简单明了，不能给人复杂的感觉，主要做导航效果。</p>
+
+<p>​	首页元素：</p>
+
+<p>​	以简洁清晰问主，设立设计展示导航栏，文章目录列表，文章标题列表， 翻页器</p>
+
+<div class="language-html highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nt">&lt;div</span> <span class="na">id=</span><span class="s">"indexcontent"</span> <span class="na">style=</span><span class="s">"text-align: center;"</span><span class="nt">&gt;</span>
+            <span class="nt">&lt;div</span> <span class="na">id=</span><span class="s">"headerHTML"</span><span class="nt">&gt;</span>
+                <span class="nt">&lt;h1&gt;</span>页面头<span class="nt">&lt;/h1&gt;</span>
+            <span class="nt">&lt;/div&gt;</span>
+            <span class="nt">&lt;div</span> <span class="na">id=</span><span class="s">"articleTable"</span><span class="nt">&gt;</span>
+            	文章目录列表
+			<span class="nt">&lt;/div&gt;</span>
+            <span class="nt">&lt;div</span> <span class="na">id=</span><span class="s">"articlelist"</span><span class="nt">&gt;</span>
+                <span class="nt">&lt;h3&gt;</span>文章标题1<span class="nt">&lt;/h3&gt;</span>
+                <span class="nt">&lt;p&gt;</span>摘要<span class="nt">&lt;/p&gt;</span>
+                <span class="nt">&lt;p&gt;</span>时间<span class="nt">&lt;/p&gt;</span>
+                <span class="nt">&lt;h3&gt;</span>文章标题2<span class="nt">&lt;/h3&gt;</span>
+                <span class="nt">&lt;p&gt;</span>摘要<span class="nt">&lt;/p&gt;</span>
+                <span class="nt">&lt;p&gt;</span>时间<span class="nt">&lt;/p&gt;</span>
+            <span class="nt">&lt;/div&gt;</span>
+            <span class="nt">&lt;div</span> <span class="na">id=</span><span class="s">"pageTurner"</span><span class="nt">&gt;</span>
+                <span class="nt">&lt;h2&gt;</span>
+                    <span class="ni">&amp;lt;</span> 1 2 3 4 5 <span class="ni">&amp;gt;</span>
+                <span class="nt">&lt;/h2&gt;</span> 翻页器
+            <span class="nt">&lt;/div&gt;</span>
+<span class="nt">&lt;/div&gt;</span>
+</code></pre></div></div>
+
+<h4 id="indexjs-logic--首页逻辑处理">Index.js Logic | 首页逻辑处理</h4>
+
+<p>主要逻辑应该是在页面加载完毕之后，获取bloginfo 数据，遍历提取文章简要信息，并写入首页目录</p>
+
+<div class="language-js highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">window</span><span class="p">.</span><span class="nx">onload</span> <span class="o">=</span> <span class="kd">function</span> <span class="p">()</span> <span class="p">{</span>
+    <span class="c1">//get bloginfo</span>
+    <span class="c1">//foreache 遍历</span>
+    <span class="c1">//write in articleTable</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>按目录归纳文章</p>
+
+<div class="language-js highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">//整体逻辑就是  如果 dir=/java/io/ 那么一次创建  java folder 和 io folder</span>
+<span class="c1">//json遍历的时候，根据key 创建dir 具体实现后续更新</span>
+<span class="c1">//具体效果可以访问  narule.net/blog</span>
+</code></pre></div></div>
+
+<p>按时间归纳文章:</p>
+
+<p>按时间处理文章首页要把文章的时间排序排好，这里是通过天数排序</p>
+
+<div class="language-js highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">var</span> <span class="nx">BlogInTime</span> <span class="o">=</span> <span class="k">new</span> <span class="nb">Map</span><span class="p">();</span> <span class="c1">//文章存放处</span>
+<span class="kd">var</span> <span class="nx">timeKey</span> <span class="o">=</span> <span class="p">[];</span> <span class="c1">//排序工具</span>
+<span class="cm">/**
+ * 时间字符串转 数字
+ * time yyyy-mm-dd
+ * 最小单位 日
+ */</span>
+<span class="kd">function</span> <span class="nx">string2date</span><span class="p">(</span><span class="nx">timestr</span><span class="p">){</span>
+    <span class="kd">var</span> <span class="nx">arr</span> <span class="o">=</span> <span class="nx">timestr</span><span class="p">.</span><span class="nx">split</span><span class="p">(</span><span class="dl">'</span><span class="s1">-</span><span class="dl">'</span><span class="p">);</span>
+    <span class="k">if</span><span class="p">(</span><span class="nx">arr</span><span class="p">){</span>
+        <span class="k">if</span><span class="p">(</span><span class="nx">arr</span><span class="p">.</span><span class="nx">length</span> <span class="o">==</span> <span class="mi">1</span><span class="p">){</span>
+            <span class="k">return</span> <span class="nb">parseInt</span><span class="p">(</span><span class="nx">arr</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">*</span> <span class="mi">365</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="k">if</span><span class="p">(</span><span class="nx">arr</span><span class="p">.</span><span class="nx">length</span> <span class="o">==</span> <span class="mi">2</span><span class="p">){</span>
+            <span class="k">return</span> <span class="nb">parseInt</span><span class="p">(</span><span class="nx">arr</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">*</span> <span class="mi">365</span> <span class="o">+</span> <span class="nb">parseInt</span><span class="p">(</span><span class="nx">arr</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="o">*</span> <span class="mi">30</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="k">if</span><span class="p">(</span><span class="nx">arr</span><span class="p">.</span><span class="nx">length</span> <span class="o">==</span> <span class="mi">3</span><span class="p">){</span>
+            <span class="k">return</span> <span class="nb">parseInt</span><span class="p">(</span><span class="nx">arr</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">*</span> <span class="mi">365</span> <span class="o">+</span> <span class="nb">parseInt</span><span class="p">(</span><span class="nx">arr</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="o">*</span> <span class="mi">30</span> <span class="o">+</span> <span class="nb">parseInt</span><span class="p">(</span><span class="nx">arr</span><span class="p">[</span><span class="mi">2</span><span class="p">]);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="cm">/**
+ * 文章时间处理
+ */</span>
+<span class="kd">function</span> <span class="nx">dealTimeInfo</span><span class="p">(</span><span class="nx">article</span><span class="p">){</span>
+    <span class="kd">var</span> <span class="nx">time</span> <span class="o">=</span> <span class="nx">article</span><span class="p">.</span><span class="nx">md_time</span><span class="p">;</span>
+    <span class="k">if</span><span class="p">(</span><span class="nx">time</span> <span class="o">==</span> <span class="dl">'</span><span class="s1">0</span><span class="dl">'</span><span class="p">){</span>
+        <span class="nx">time</span> <span class="o">=</span> <span class="nx">article</span><span class="p">.</span><span class="nx">create_time</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="kd">var</span> <span class="nx">articles</span> <span class="o">=</span> <span class="nx">BlogInTime</span><span class="p">.</span><span class="kd">get</span><span class="p">(</span><span class="nx">time</span><span class="p">);</span>
+    <span class="k">if</span><span class="p">(</span><span class="o">!</span><span class="nx">articles</span><span class="p">){</span>
+        <span class="nx">articles</span> <span class="o">=</span> <span class="p">[];</span>
+        <span class="k">if</span><span class="p">(</span><span class="nx">time</span><span class="p">.</span><span class="nx">indexOf</span><span class="p">(</span><span class="dl">'</span><span class="s1">-</span><span class="dl">'</span><span class="p">)</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span><span class="p">){</span>
+            <span class="kd">var</span> <span class="nx">timenode</span> <span class="o">=</span> 
+            <span class="p">{</span>
+                <span class="na">id</span><span class="p">:</span> <span class="nx">string2date</span><span class="p">(</span><span class="nx">time</span><span class="p">),</span>
+                <span class="na">date</span><span class="p">:</span> <span class="nx">time</span>
+            <span class="p">};</span>
+            <span class="nx">timeKey</span><span class="p">.</span><span class="nx">push</span><span class="p">(</span><span class="nx">timenode</span><span class="p">);</span>
+        <span class="p">}</span>
+        
+    <span class="p">}</span>
+    <span class="nx">articles</span><span class="p">.</span><span class="nx">push</span><span class="p">(</span><span class="nx">article</span><span class="p">);</span>
+    <span class="nx">BlogInTime</span><span class="p">.</span><span class="kd">set</span><span class="p">(</span><span class="nx">time</span><span class="p">,</span><span class="nx">articles</span><span class="p">);</span>
+
+<span class="p">}</span>
+
+</code></pre></div></div>
+
+<h3 id="filemonitor--监控">Filemonitor | 监控</h3>
+
+<blockquote>
+  <p>markdown文件如果有变化，需要监听到变化，并且拿到这些markdown文件的信息并存储</p>
+</blockquote>
+
+<p><strong>有什么工具能够做到监控，也是需要去了解的，查阅资料了解到linux有监听工具<a href="https://github.com/inotify-tools/inotify-tools">inotify-tools</a>可以做到，这里用shell脚本去运行这个程序（后台运行）</strong></p>
+
+<h4 id="inotify-tools--监控工具">inotify-tools | 监控工具</h4>
+
+<p>系统环境：Linux Centos7</p>
+
+<h5 id="install--安装">install | 安装</h5>
+
+<p><code class="language-plaintext highlighter-rouge">yum install -y epel-release &amp;&amp; yum update</code>     更新资源</p>
+
+<p><code class="language-plaintext highlighter-rouge">yum --enablerepo=epel install inotify-tools</code>  下载安装</p>
+
+<h5 id="use--使用">use | 使用</h5>
+
+<p><code class="language-plaintext highlighter-rouge">inotifywait   folder </code>    这是简单表示，实际参数更具具体要求而定，inotifywait表示监听文件夹下的变化  folder就是监听对象</p>
+
+<p>example</p>
+
+<p>如果监听 /home/data/narule/markdown/ 文件夹，之后在/home/data/narule/markdown/创建了java 文件夹</p>
+
+<p>对应的脚本思路：</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c">#!/bin/bash</span>
+
+<span class="c">#设置监听的文件夹位置</span>
+<span class="nv">SRCDIR</span><span class="o">=</span>/home/data/narule/markdown/  
+
+
+<span class="c"># 启动监听任务：监听create,delete,modify 事件  -e 表示监听事件输出 </span>
+inotifywait <span class="nt">-mqr</span> <span class="nt">--timefmt</span> <span class="s1">'%d/%m/%y %H:%M'</span> <span class="nt">--format</span> <span class="s1">'%T %w %f %e'</span> <span class="nt">-e</span> <span class="s1">'create,delete,modify'</span> <span class="nv">$SRCDIR</span> | <span class="k">while </span><span class="nb">read </span>DATE TIME DIR FILE EVENT<span class="p">;</span>
+
+
+<span class="c"># 循环监听逻辑</span>
+<span class="k">do
+	</span><span class="nb">echo</span> <span class="k">${</span><span class="nv">EVENT</span><span class="k">}</span>
+	<span class="c">#获取信息</span>
+	<span class="c">#文件夹位置  全路径 DIR=/home/data/narule/markdown/</span>
+    <span class="nv">folder</span><span class="o">=</span><span class="nv">$DIR</span> 
+    <span class="c">#文件名（文件夹也是文件）  file=java</span>
+    <span class="nv">file</span><span class="o">=</span><span class="k">${</span><span class="nv">$FILE</span><span class="k">}</span> 
+    
+    
+    <span class="c">#判断事件类型</span>
+    <span class="k">if</span> <span class="o">[[</span> <span class="nv">$EVENT</span> <span class="o">==</span> <span class="s2">"CREATE,ISDIR"</span> <span class="o">]]</span><span class="p">;</span> <span class="c">#创建文件夹 </span>
+    	<span class="k">then</span> <span class="c">#执行对应动作 这里创建java文件夹，所以在此处执行相关脚本</span>
+    		
+    <span class="k">elif</span> <span class="o">[[</span> <span class="nv">$EVENT</span> <span class="o">==</span> <span class="s2">"MODIFY,ISDIR"</span> <span class="o">]]</span><span class="p">;</span> <span class="c">#修改文件夹</span>
+    	<span class="k">then
+    
+    elif</span> <span class="o">[[</span> <span class="nv">$EVENT</span> <span class="o">==</span> <span class="s2">"DELETE,ISDIR"</span> <span class="o">]]</span><span class="p">;</span> <span class="c">#删除文件夹</span>
+    	<span class="k">then
+    
+    elif</span>  <span class="o">[[</span> <span class="nv">$EVENT</span> <span class="o">==</span> <span class="s2">"CREATE"</span> <span class="o">]]</span><span class="p">;</span> <span class="c">#创建文件</span>
+    	<span class="k">then
+    
+    elif</span> <span class="o">[[</span> <span class="nv">$EVENT</span> <span class="o">==</span> <span class="s2">"MODIFY"</span> <span class="o">]]</span><span class="p">;</span> <span class="c">#修改文件</span>
+    	<span class="k">then
+    	
+    elif</span> <span class="o">[[</span> <span class="nv">$EVENT</span> <span class="o">==</span> <span class="s2">"DELETE"</span> <span class="o">]]</span><span class="p">;</span> <span class="c">#删除文件</span>
+    	<span class="k">then
+    	
+    fi
+done</span>
+</code></pre></div></div>
+
+<h3 id="markdown2html--文章转网页格式">Markdown2html | 文章转网页格式</h3>
+
+<blockquote>
+  <p>markdown文件转为html文件是普遍需求，markdown发布后，将其转为html文件，能够很好的支持网站的访问</p>
+</blockquote>
+
+<p><strong>很多网站，是直接将markdown文件翻译为html内容，显示在页面，github中也有很多开源的资源，这里采用来自麻省理工？某团队的工具 <a href="https://github.com/magiclen/markdown2html-converter">markdown2html-converter</a>。感谢</strong></p>
+
+<h4 id="markdown2html-converter">markdown2html-converter</h4>
+
+<p>系统环境：Linux Centos7</p>
+
+<h5 id="install--安装-1">install | 安装</h5>
+
+<p>安装前提是你的系统安装了rust动态编程语言</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># rust 安装 安装看看是否能够全局运行</span>
+curl <span class="nt">-sSf</span> https://build.travis-ci.org/files/rustup-init.sh | sh <span class="nt">-s</span> <span class="nt">--</span> <span class="nt">--default-toolchain</span><span class="o">=</span><span class="nv">$TRAVIS_RUST_VERSION</span> <span class="nt">--profile</span><span class="o">=</span>minimal <span class="nt">-y</span>
+
+<span class="c"># 从github获取项目代码</span>
+git clone <span class="nt">--depth</span><span class="o">=</span>50 <span class="nt">--branch</span><span class="o">=</span>v1.1.1 https://github.com/magiclen/markdown2html-converter.git  
+
+<span class="c"># 构建</span>
+<span class="c">## 配置TARGET</span>
+<span class="nb">export </span><span class="nv">TARGET</span><span class="o">=</span>x86_64-unknown-linux-musl
+
+<span class="c"># markdown2html-converter 资源获取</span>
+rustup target add <span class="nv">$TARGET</span>
+cargo <span class="nb">test</span> <span class="nt">--target</span> <span class="nv">$TARGET</span>
+
+<span class="c"># 编译生成可执行文件</span>
+make
+</code></pre></div></div>
+
+<p>官网安装教程 https://travis-ci.org/github/magiclen/markdown2html-converter/jobs/709086971</p>
+
+<h5 id="use--使用-1">use | 使用</h5>
+
+<p>markdown2html-conventer  /path/filename.md -o  /path/filename.html</p>
+
+<h3 id="bloginfo-extraction-博客信息提取">Bloginfo extraction| 博客信息提取</h3>
+
+<blockquote>
+  <p>文章的信息如何存放，用什么形式存储，会较好理解并且能够解析，这里打算用json数据形式去存储博客的文章信息</p>
+</blockquote>
+
+<p>**json解析确定后，遇到一些json文件创建和读写的问题，json文件知识包含网站文章的信息，本人觉得不应该运行一个java或者其他什么程序去做这件事，这没必要，浪费资源；最后我在网上找到了<a href="https://github.com/stedolan/jq">jq</a>工具，他可以很好的解析json文件并配合shell修改json文件 <a href="https://stedolan.github.io/jq/manual/">jq文档</a>  **</p>
+
+<h4 id="jq---json解析工具">jq  | json解析工具</h4>
+
+<p>系统环境：Linux Centos7</p>
+
+<h5 id="install--安装-2">install | 安装</h5>
+
+<p><code class="language-plaintext highlighter-rouge">yum install -y jq</code></p>
+
+<p>文档：https://github.com/stedolan/jq/wiki/Cookbook</p>
+
+<p>jq 的使用命令比较多，本人也是刚了解</p>
+
+<h5 id="use--使用-2">use | 使用</h5>
+
+<p>解析文件</p>
+
+<p><code class="language-plaintext highlighter-rouge">cat file.json | jq .</code> 或者 jq .  file.json</p>
+
+<p>前提file.json 内容是正确的json格式，才好正常解析</p>
+
+<p>example</p>
+
+<p>author.json：</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
+    </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"rule"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"from"</span><span class="p">:</span><span class="w"> </span><span class="s2">"china"</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>执行 <code class="language-plaintext highlighter-rouge">cat author.json | jq ' ."age" = "5" '</code>  后控制台输出：</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
+    </span><span class="nl">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"rule"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"5"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"from"</span><span class="p">:</span><span class="w"> </span><span class="s2">"china"</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>执行 <code class="language-plaintext highlighter-rouge">cat author.json | jq ' del(."name") '</code>  后控制台输出：</p>
+
+<div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
+    </span><span class="nl">"age"</span><span class="p">:</span><span class="w"> </span><span class="s2">"5"</span><span class="p">,</span><span class="w">
+    </span><span class="nl">"from"</span><span class="p">:</span><span class="w"> </span><span class="s2">"china"</span><span class="w">
+</span><span class="p">}</span><span class="w">
+</span></code></pre></div></div>
+
+<p>通过这些命令，就可以处理博客文章信息存储到json文件中，完全自动更新</p>
+
+<p>编写好脚本文件后，给文件加权限使可执行</p>
+
+<p><code class="language-plaintext highlighter-rouge">chmod + x markdown_monitor.sh</code></p>
+
+<p>后台启动</p>
+
+<p><code class="language-plaintext highlighter-rouge">nohup ./markdown_monitor.sh  &gt; /var/log/monitor.log 2&gt;&amp;1  &amp;</code></p>
+
+<p>就可以监控运作了，上传markdown文件，就自动更新HTML页面到博客</p>
+
+<h2 id="end--结尾">END | 结尾</h2>
+
+<p>文件已经放在 github中，拿下来直接可用，唯一需要修改的地方就是文件夹目录</p>
+
+<p>这里整体讲下思路和实现，有些实现并没在本文中写出来，文中目前主要介绍有 后端文件监控及自动将markdown文件转为html文件</p>
+
+<p>转载请注明出处！</p>
+
+<hr />
+
+<p>​																																2020-07-25 吴楠予</p>
+:ET

@@ -1,0 +1,188 @@
+I"�4<h1 id="java-object">Java Object</h1>
+
+<h2 id="超类object">超类Object</h2>
+
+<blockquote>
+  <p>java中，所有类都默认继承一个超类，最顶层类，就是Object类。’’</p>
+</blockquote>
+
+<p>jdk类文件描述</p>
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cm">/**
+ * Class {@code Object} is the root of the class hierarchy.
+ * Every class has {@code Object} as a superclass. All objects,
+ * including arrays, implement the methods of this class.
+ *
+ * @author  unascribed
+ * @see     java.lang.Class
+ * @since   JDK1.0
+ */</span>
+</code></pre></div></div>
+<p>上面提到，包括数组，都实现了Object的方法。</p>
+
+<p>不管是新建的类，或者继承的类，顶类还是object对象。如果编写自定义类没有 extends 父类，那么父类就是Object</p>
+
+<p>既然Object是一个顶部超类，自然特殊重要，并且公开类方法，其他类也有，需要了解</p>
+
+<h2 id="公共方法">公共方法</h2>
+<h3 id="getclass">getClass()</h3>
+
+<p>对象调用此方法，获取对象的类文件对象，即Class实例对象</p>
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">final</span> <span class="kd">native</span> <span class="nc">Class</span><span class="o">&lt;?&gt;</span> <span class="n">getClass</span><span class="o">();</span> <span class="c1">//native 标识，说明是调用jvm底层方法(C语言) final</span>
+</code></pre></div></div>
+
+<h3 id="hashcode">hashCode()</h3>
+
+<p>获取哈希码方法，java中区分对象，分配对象位置，需要用到，默认应该是与对象内存地址有关的值，且唯一。</p>
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">native</span> <span class="kt">int</span> <span class="nf">hashCode</span><span class="o">();</span> <span class="c1">//native 可以重写</span>
+</code></pre></div></div>
+
+<h3 id="equalsobject-object">equals(Object object)</h3>
+
+<p>用于判断两个对象是否相等，子类可以重写自定义</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kt">boolean</span> <span class="nf">equals</span><span class="o">(</span><span class="nc">Object</span> <span class="n">obj</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="o">(</span><span class="k">this</span> <span class="o">==</span> <span class="n">obj</span><span class="o">);</span> <span class="c1">//这里 == 判断的是两个对象在内存中的地址值</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<h3 id="tostring">toString()</h3>
+
+<p>对象标志方法，默认是类名+@+hashCode()值，可重写自定义</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="nc">String</span> <span class="nf">toString</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="nf">getClass</span><span class="o">().</span><span class="na">getName</span><span class="o">()</span> <span class="o">+</span> <span class="s">"@"</span> <span class="o">+</span> <span class="nc">Integer</span><span class="o">.</span><span class="na">toHexString</span><span class="o">(</span><span class="n">hashCode</span><span class="o">());</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<h3 id="wait">wait()</h3>
+
+<p>java线程相关方法，在多线程场景，cpu资源分配问题上使用，可使当前线程等待
+（搭配synchronize使用）。调用wait时，线程会释放对应的锁资源
+wait(long timeout) 一样，就是可以设置wait时间，更细节，机制是一样的。 wait() 则调用 wait(0);</p>
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">final</span> <span class="kt">void</span> <span class="nf">wait</span><span class="o">()</span> <span class="kd">throws</span> <span class="nc">InterruptedException</span> <span class="o">{</span>
+        <span class="n">wait</span><span class="o">(</span><span class="mi">0</span><span class="o">);</span>
+<span class="o">}</span>	
+<span class="kd">public</span> <span class="kd">final</span> <span class="kd">native</span> <span class="kt">void</span> <span class="nf">wait</span><span class="o">(</span><span class="kt">long</span> <span class="n">timeout</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">InterruptedException</span><span class="o">;</span> <span class="c1">//native &amp; final</span>
+</code></pre></div></div>
+
+<h3 id="notify">notify()</h3>
+
+<p>与wait()方法对应，锁资源，试图唤醒其他wait 线程（某一个）,notifyAll() 则是唤醒所有等待线程</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">final</span> <span class="kd">native</span> <span class="kt">void</span> <span class="nf">notify</span><span class="o">();</span>  <span class="c1">//native &amp; final</span>
+</code></pre></div></div>
+
+<h4 id="示例">示例</h4>
+
+<p>启动多个线程，按照预定顺序启动（数值大的优先启动，通过 wait 和 notify达到控制效果）</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="nn">javabasis.lang</span><span class="o">;</span>
+
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">MyThread</span> <span class="kd">extends</span> <span class="nc">Thread</span><span class="o">{</span>
+
+	
+	<span class="kd">private</span> <span class="kd">static</span> <span class="nc">Object</span> <span class="n">lock</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">Object</span><span class="o">();</span> <span class="c1">//锁对象</span>
+	
+	<span class="kd">private</span> <span class="kd">static</span> <span class="kd">volatile</span> <span class="kt">int</span> <span class="n">threshold</span><span class="o">;</span>  <span class="c1">// 线程启动阈值</span>
+	
+	
+	<span class="kd">private</span> <span class="kt">int</span> <span class="n">num</span><span class="o">;</span>  <span class="c1">//对象标识</span>
+
+	<span class="kd">public</span> <span class="nf">MyThread</span><span class="o">(</span><span class="kt">int</span> <span class="n">num</span><span class="o">)</span> <span class="o">{</span> <span class="c1">//有参构造</span>
+		<span class="kd">super</span><span class="o">();</span>
+		<span class="k">this</span><span class="o">.</span><span class="na">num</span> <span class="o">=</span> <span class="n">num</span><span class="o">;</span>
+	<span class="o">}</span>
+
+	<span class="kd">public</span> <span class="kt">int</span> <span class="nf">getNum</span><span class="o">()</span> <span class="o">{</span>
+		<span class="k">return</span> <span class="n">num</span><span class="o">;</span>
+	<span class="o">}</span>
+
+	<span class="kd">public</span> <span class="kt">void</span> <span class="nf">setNum</span><span class="o">(</span><span class="kt">int</span> <span class="n">num</span><span class="o">)</span> <span class="o">{</span>
+		<span class="k">this</span><span class="o">.</span><span class="na">num</span> <span class="o">=</span> <span class="n">num</span><span class="o">;</span>
+	<span class="o">}</span>
+
+	<span class="cm">/*
+	 * 重写线程run方法
+	 */</span>
+	<span class="nd">@Override</span>
+	<span class="kd">public</span> <span class="kt">void</span> <span class="nf">run</span><span class="o">()</span> <span class="o">{</span>
+		<span class="kd">synchronized</span> <span class="o">(</span><span class="n">lock</span><span class="o">)</span> <span class="o">{</span>
+			
+			<span class="k">while</span><span class="o">(</span><span class="k">this</span><span class="o">.</span><span class="na">num</span> <span class="o">&lt;</span> <span class="n">threshold</span><span class="o">)</span> <span class="o">{</span> <span class="c1">// 数值小于阈值，不能执行任务，进入等待状态</span>
+				<span class="k">try</span> <span class="o">{</span>
+					<span class="n">lock</span><span class="o">.</span><span class="na">wait</span><span class="o">();</span>
+				<span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">InterruptedException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+					<span class="n">e</span><span class="o">.</span><span class="na">printStackTrace</span><span class="o">();</span>
+				<span class="o">}</span>
+			<span class="o">}</span>
+			<span class="n">threshold</span> <span class="o">--;</span> <span class="c1">// 没启动一个线程任务，阈值减一</span>
+			<span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"..&gt;"</span> <span class="o">+</span> <span class="k">this</span><span class="o">.</span><span class="na">getName</span><span class="o">()</span> <span class="o">+</span> <span class="s">":num="</span><span class="o">+</span> <span class="k">this</span><span class="o">.</span><span class="na">num</span> <span class="o">+</span><span class="s">"*执行任务"</span><span class="o">);</span>
+			<span class="n">lock</span><span class="o">.</span><span class="na">notifyAll</span><span class="o">();</span> <span class="c1">//唤醒其他等待线程(与lock锁关联的线程)</span>
+		<span class="o">}</span>
+	<span class="o">}</span>
+	
+	
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">main</span><span class="o">(</span><span class="nc">String</span><span class="o">[]</span> <span class="n">args</span><span class="o">)</span> <span class="o">{</span>
+		<span class="kt">int</span> <span class="n">h</span> <span class="o">=</span> <span class="mi">31</span><span class="o">;</span> 
+		<span class="n">threshold</span> <span class="o">=</span> <span class="n">h</span> <span class="o">-</span> <span class="mi">1</span><span class="o">;</span>  <span class="c1">//阈值为30</span>
+		<span class="k">for</span> <span class="o">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">h</span><span class="o">;</span> <span class="n">i</span> <span class="o">++)</span> <span class="o">{</span>
+			<span class="k">new</span> <span class="nf">MyThread</span><span class="o">(</span><span class="n">i</span><span class="o">).</span><span class="na">start</span><span class="o">();</span>  <span class="c1">//启动线程</span>
+		<span class="o">}</span>
+	<span class="o">}</span>
+	
+<span class="o">}</span>
+
+<span class="cm">/*控制台输出结果
+..&gt;Thread-30:num=30*执行任务
+..&gt;Thread-29:num=29*执行任务
+..&gt;Thread-28:num=28*执行任务
+..&gt;Thread-27:num=27*执行任务
+..&gt;Thread-26:num=26*执行任务
+..&gt;Thread-25:num=25*执行任务
+..&gt;Thread-24:num=24*执行任务
+..&gt;Thread-23:num=23*执行任务
+..&gt;Thread-22:num=22*执行任务
+..&gt;Thread-21:num=21*执行任务
+..&gt;Thread-20:num=20*执行任务
+..&gt;Thread-19:num=19*执行任务
+..&gt;Thread-18:num=18*执行任务
+..&gt;Thread-17:num=17*执行任务
+..&gt;Thread-16:num=16*执行任务
+..&gt;Thread-15:num=15*执行任务
+..&gt;Thread-14:num=14*执行任务
+..&gt;Thread-13:num=13*执行任务
+..&gt;Thread-12:num=12*执行任务
+..&gt;Thread-11:num=11*执行任务
+..&gt;Thread-10:num=10*执行任务
+..&gt;Thread-9:num=9*执行任务
+..&gt;Thread-8:num=8*执行任务
+..&gt;Thread-7:num=7*执行任务
+..&gt;Thread-6:num=6*执行任务
+..&gt;Thread-5:num=5*执行任务
+..&gt;Thread-4:num=4*执行任务
+..&gt;Thread-3:num=3*执行任务
+..&gt;Thread-2:num=2*执行任务
+..&gt;Thread-1:num=1*执行任务
+..&gt;Thread-0:num=0*执行任务
+
+*/</span>
+</code></pre></div></div>
+
+<h3 id="clone">clone()</h3>
+
+<p>对象克隆方法，是jvm的native方法，更具对象字节复制，真正需要clone的时候，需要实现CloneAble接口，重写Object的clone()方法</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">protected</span> <span class="kd">native</span> <span class="nc">Object</span> <span class="nf">clone</span><span class="o">()</span> <span class="kd">throws</span> <span class="nc">CloneNotSupportedException</span><span class="o">;</span>  
+</code></pre></div></div>
+
+<h3 id="finalize">finalize()</h3>
+
+<p>与jvm内存回收有关的方法</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">protected</span> <span class="kt">void</span> <span class="nf">finalize</span><span class="o">()</span> <span class="kd">throws</span> <span class="nc">Throwable</span> <span class="o">{</span> <span class="o">}</span>
+</code></pre></div></div>
+
+<p>实际开发中用到比较少，想了解finalize更多，可以查阅资料</p>
+
+<p>https://www.cnblogs.com/langtianya/p/4401062.html</p>
+:ET
