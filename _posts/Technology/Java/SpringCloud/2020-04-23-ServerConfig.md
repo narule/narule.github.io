@@ -1,6 +1,6 @@
 # ServerConfig
 
-> SpringCloud 组件，ServerConfig 是配置服务中心，组件，用于统一管理项目配置
+> SpringCloud 组件，ServerConfig 是配置服务中心，组件，用于统一管理项目配置''
 
 
 
