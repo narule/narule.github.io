@@ -33,7 +33,7 @@ texture:
   navigation:
     - title: Home
       url: "/" 
-    - title: Personal Website
+    - title: narule.net
       url: "http://narule.net/blog"
 
 # If you want to link only specific pages in your header, uncomment
