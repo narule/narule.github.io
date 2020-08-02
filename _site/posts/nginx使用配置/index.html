@@ -1,0 +1,140 @@
+<p>使用nginx首先要明确使用场景，这里是一台服务器实现多种类型访问：网站首页访问，GitLab访问，note(私人springboot项目)，静态文件访问。’’</p>
+
+<p>下面是一份配置文件 nginx.conf，这里假设服务起域名是www.test.com(配置文件是从真实主机copy过来的，仅原域名www.xxx.com被改为www.test.com)。它实现了以下功能:</p>
+
+<p>1.http://www.test.com——————————————-&gt; 访问网站首页：html/index.html    实际访问/usr/local/nginx/html/index.html</p>
+
+<p>2.http://www.test.com/note/online—————————&gt; 访问springboot项目controller层接口　 note 是一个springboot项目，实际访问 127.0.0.1:11181/online</p>
+
+<p>3.http://www.test.com/stc/jquery.js————————–&gt; 访问静态文件　　　　　　　　　　　　 实际访问服务器静态文件夹位置 /usr/local/nginx/html/static/jquery.js</p>
+
+<p>4.http://www.test.com/git————————————–&gt; 访问GitLab首页　　　　　　　　　　　已经安装了GitLab私服，使用的是自己的nginx，没有用gitlab中集成的nginx</p>
+
+<h3 id="nginxconf">nginx.conf：</h3>
+
+<div class="language-nginx highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">user</span> <span class="s">root</span> <span class="s">root</span><span class="p">;</span>   <span class="c1">#这里用户是root 可能权限大了点，需要指出：这里配置root还有一个原因是本人安装gitlab时配置文件指定用户为root,避免访问gitlab时可能有权限冲突，将gitlab用户与nginx的配置文件中用户设置为一致。</span>
+<span class="k">worker_processes</span>  <span class="mi">1</span><span class="p">;</span>
+
+<span class="k">events</span> <span class="p">{</span>
+    <span class="kn">accept_mutex</span> <span class="no">on</span><span class="p">;</span>   <span class="c1">#设置网路连接序列化，防止惊群现象发生，默认为on</span>
+    <span class="kn">multi_accept</span> <span class="no">on</span><span class="p">;</span>  <span class="c1">#设置一个进程是否同时接受多个网络连接，默认为off</span>
+    <span class="c1">#use epoll;      #事件驱动模型，select|poll|kqueue|epoll|resig|/dev/poll|eventport</span>
+    <span class="kn">worker_connections</span>  <span class="mi">1024</span><span class="p">;</span>
+<span class="p">}</span>
+
+
+<span class="k">http</span> <span class="p">{</span>
+    <span class="kn">include</span>       <span class="s">mime.types</span><span class="p">;</span>
+    <span class="kn">default_type</span>  <span class="nc">application/octet-stream</span><span class="p">;</span>
+    <span class="kn">log_format</span>  <span class="s">main</span>  <span class="s">'</span><span class="nv">$time_local</span> <span class="s">|</span><span class="nv">$remote_addr-$remote_user</span><span class="s">|</span> <span class="nv">$http_host</span> <span class="s">|</span> <span class="nv">$http_referer</span> <span class="s">|</span> <span class="nv">$request</span> <span class="s">|</span> <span class="nv">$status</span> <span class="s">|</span><span class="nv">$request_body</span> <span class="s">|</span> <span class="nv">$body_bytes_sent</span><span class="s">|</span><span class="nv">$http_user_agent</span><span class="s">|</span><span class="nv">$http_x_forwarded_for</span><span class="s">'</span><span class="p">;</span>
+    <span class="kn">access_log</span>  <span class="nc">logs/test</span><span class="s">_access.log</span>  <span class="s">main</span><span class="p">;</span>
+        
+    <span class="kn">sendfile</span>        <span class="no">on</span><span class="p">;</span>
+
+    <span class="c1">#gitlab节点   gitlab项目 真实访问入口</span>
+    <span class="kn">upstream</span> <span class="s">gitlab-workhorse</span> <span class="p">{</span>
+        <span class="kn">server</span> <span class="s">unix:/var/opt/gitlab/gitlab-workhorse/socket</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="c1">#note项目 真实访问入口</span>
+    <span class="kn">upstream</span>  <span class="s">note</span><span class="p">{</span>
+           <span class="kn">server</span> <span class="nf">127.0.0.1</span><span class="p">:</span><span class="mi">11181</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="kn">keepalive_timeout</span>  <span class="mi">65</span><span class="p">;</span>
+    <span class="c1">#gzip  on;</span>
+    <span class="c1">#域名配置</span>
+    <span class="kn">server</span> <span class="p">{</span>
+        <span class="kn">listen</span>        <span class="mi">80</span><span class="p">;</span>        <span class="c1">#监听端口号 80</span>
+        <span class="kn">server_name</span>  <span class="s">www.test.com</span><span class="p">;</span>    <span class="c1">#服务器域名</span>
+        <span class="kn">root</span> <span class="s">html</span><span class="p">;</span>            <span class="c1">#根目录</span>
+        <span class="kn">error_page</span> <span class="mi">404</span> <span class="n">/404.html</span><span class="p">;</span>    <span class="c1">#错误跳转</span>
+        <span class="kn">index</span> <span class="s">index.html</span><span class="p">;</span>        <span class="c1">#首页</span>
+            <span class="c1">#开启代理服务的404页面</span>
+            <span class="c1">#针对代理服务的404</span>
+        <span class="kn">proxy_intercept_errors</span> <span class="no">on</span><span class="p">;</span>
+        <span class="c1">#charset koi8-r;</span>
+
+         <span class="c1">#gitlab   gitlab项目后缀名匹配，直接从gitlab的nginx配置文件中搬过来的</span>
+        <span class="kn">location</span> <span class="p">~</span> <span class="sr">(\.git/gitlab-lfs/objects|\.git/info/lfs/objects/batch$)</span> <span class="p">{</span>
+            <span class="kn">proxy_pass</span> <span class="s">http://gitlab-workhorse</span><span class="p">;</span>
+            <span class="kn">proxy_request_buffering</span> <span class="no">off</span><span class="p">;</span>
+          <span class="p">}</span>
+
+        <span class="c1"># /gitlab 项目配置路径</span>
+        <span class="kn">location</span> <span class="n">/git</span> <span class="p">{</span>
+            <span class="kn">proxy_pass</span>  <span class="s">http://gitlab-workhorse</span><span class="p">;</span>
+          <span class="p">}</span>
+
+        <span class="c1"># 静态路径匹配 </span>
+        <span class="kn">location</span> <span class="s">^~</span> <span class="n">/stc</span> <span class="p">{</span>
+            <span class="kn">alias</span> <span class="nc">html/static</span><span class="p">;</span>
+            <span class="c1">#//访问http://www.test.com/stc/jquery.js  实际访问的是 html/static/jquery.js </span>
+        <span class="p">}</span>
+    
+        <span class="c1"># note项目</span>
+        <span class="kn">location</span> <span class="n">/note</span> <span class="p">{</span>
+        <span class="c1">#一些ip地址头信息预处理</span>
+        <span class="kn">proxy_set_header</span> <span class="s">Host</span> <span class="nv">$http_host</span><span class="p">;</span>    
+        <span class="kn">proxy_set_header</span> <span class="s">X-Real-IP</span> <span class="nv">$remote_addr</span><span class="p">;</span>
+        <span class="kn">proxy_set_header</span> <span class="s">X-Forwarded-For</span> <span class="nv">$proxy_add_x_forwarded_for</span><span class="p">;</span>
+        <span class="kn">proxy_set_header</span> <span class="s">X-Forwarded-Proto</span> <span class="nv">$scheme</span><span class="p">;</span>
+        <span class="kn">proxy_set_header</span> <span class="s">X-NginX-Proxy</span> <span class="s">true</span><span class="p">;</span>
+        <span class="kn">proxy_pass</span> <span class="s">http://note/</span><span class="p">;</span>  
+        <span class="c1">#proxy_pass的note后面添加'/'有截断效果，有'/'：http://www.test.com/note/online--&gt;http://127.0.0.1:11118/online | 没有'/'：http://www.test.com/note/online--&gt;http://127.0.0.1:11181/note/online</span>
+        <span class="c1">#http://www.test.com/note/online  实际上访问的是  127.0.0.1:11181/online </span>
+        <span class="kn">error_page</span> <span class="mi">404</span> <span class="n">/404.html</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="c1">#防止盗链</span>
+    <span class="kn">location</span> <span class="p">~</span><span class="sr">*</span> <span class="err">\</span><span class="s">.(gif|jpg|png|swf|flv)</span>$ <span class="p">{</span>
+        <span class="kn">valid_referers</span>  <span class="s">www.test.com</span><span class="p">;</span>
+        <span class="kn">if</span> <span class="s">(</span><span class="nv">$invalid_referer</span><span class="s">)</span> <span class="p">{</span>
+        <span class="kn">return</span> <span class="mi">404</span><span class="p">;</span>
+        <span class="p">}</span> 
+    <span class="p">}</span>
+
+
+    <span class="kn">error_page</span>   <span class="mi">500</span> <span class="mi">502</span> <span class="mi">503</span> <span class="mi">504</span>  <span class="n">/50x.html</span><span class="p">;</span>
+    <span class="kn">location</span> <span class="p">=</span> <span class="n">/50x.html</span> <span class="p">{</span>
+        <span class="kn">root</span>   <span class="s">html</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="p">}</span>
+
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>这里的nginx安装位置为：/usr/local/nginx/，启动程序nginx也在此处，所以配置文件中 root html； 前面没有’/’ 表示相对路径，html 实际位置是 /usr/local/nginx/html</p>
+
+<h3 id="配置细节">配置细节</h3>
+
+<h4 id="location路径匹配规则-location--uri---">　　location路径匹配规则　 <em>location [=|~|~*|^~|@] /uri/ { … }</em></h4>
+
+<p>　　=：精确匹配，url完全等于 等于号后面的值才会匹配 　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　</p>
+
+<p>　　^～：url以常规字符匹配，如果匹配该选项，不匹配别的选项，本文中有用到来匹配静态文件目录　　　　　　　　　　　　　　　</p>
+
+<p>　　～：表示正则匹配，区分大小写　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　</p>
+
+<p>　　*～：表示正则匹配，但是不区分大小写　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　</p>
+
+<p>　　/：通用匹配，任何请求都可以匹配到　　</p>
+
+<p>　　@：定义一个命名的location，用于内部定向，本文中未使用　　　</p>
+
+<h4 id="alias-与-root-区别">　　alias 与 root 区别</h4>
+
+<p>　　alias 访问路径 截取</p>
+
+<p>　　root 访问路径 拼接</p>
+
+<div class="language-nginx highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># 静态路径匹配      这里列出访问一个静态文件  alisa 与 root 使用效果区别  </span>
+    <span class="k">location</span> <span class="s">^~</span> <span class="n">/stc</span> <span class="p">{</span>
+        <span class="kn">alias</span> <span class="nc">html/static</span><span class="p">;</span>
+        <span class="c1">#http://www.test.com/stc/jquery.js --&gt; html/static/jquery.js</span>
+    <span class="p">}</span>
+    <span class="k">location</span> <span class="s">^~</span> <span class="n">/stc</span> <span class="p">{</span>
+        <span class="kn">root</span> <span class="nc">html/static</span><span class="p">;</span>
+        <span class="c1">#http://www.test.com/stc/jquery.js --&gt; html/static/stc/jquery.js   </span>
+    <span class="p">}</span>
+</code></pre></div></div>
+
+<p>本文不定期更新</p>

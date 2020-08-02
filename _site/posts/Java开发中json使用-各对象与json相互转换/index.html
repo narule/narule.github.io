@@ -1,0 +1,194 @@
+<p>Json：一种网络通信使用的数据格式，因为便于解析，比较流行，对象可以转为json，同样json也可以转对象。</p>
+
+<p>下面介绍下Json工具的简单使用（fastjson &amp;&amp; jackson）。’’</p>
+
+<h2 id="fastjson">FastJson</h2>
+
+<p>　　阿里的json数据解析工具包，国内比较流行，用的较多。</p>
+
+<h5 id="对象转json字符串">　　对象转json字符串</h5>
+
+<p>　　　　JSON.toJSONString(user);</p>
+
+<h5 id="对象转json对象">　　对象转json对象</h5>
+
+<p>　　　　(JSONObject)JSON.toJSON(user);</p>
+
+<h5 id="json字符串转对象">　　json字符串转对象</h5>
+
+<p>　　　　JSON.parseObject(jsonString, User.class);　　</p>
+
+<h5 id="json对象转对象">　　json对象转对象</h5>
+
+<p>　　　　User javaObject = JSON.toJavaObject(jsonObject, User.class);</p>
+
+<h5 id="list-转-json">　　list 转 json</h5>
+
+<p>　　　　String jsonString = JSON.toJSONString(users);</p>
+
+<h5 id="json-转-list">　json 转 list</h5>
+
+<p>　　　　List<User> parseArray = JSON.parseArray(jsonString, User.class);</User></p>
+
+<h5 id="完整示例代码需要引入fastjson的jar包">　　完整示例代码(需要引入fastjson的jar包)：</h5>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">package</span> <span class="nn">test</span><span class="o">;</span><span class="c1">//JsonTest.java 文件所在位置:test包</span>
+
+<span class="kn">import</span> <span class="nn">java.util.ArrayList</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">java.util.List</span><span class="o">;</span>
+
+
+<span class="kn">import</span> <span class="nn">com.alibaba.fastjson.JSON</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">com.alibaba.fastjson.JSONObject</span><span class="o">;</span>
+
+
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">JsonTest</span> <span class="o">{</span><span class="c1">//User 类</span>
+    <span class="kd">static</span> <span class="kd">class</span> <span class="nc">User</span><span class="o">{</span>
+        <span class="kd">private</span> <span class="nc">Integer</span> <span class="n">age</span><span class="o">;</span>
+        <span class="kd">private</span> <span class="nc">String</span> <span class="n">name</span><span class="o">;</span>
+        <span class="kd">public</span> <span class="nc">Integer</span> <span class="nf">getAge</span><span class="o">()</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="n">age</span><span class="o">;</span>
+        <span class="o">}</span>
+        <span class="kd">public</span> <span class="kt">void</span> <span class="nf">setAge</span><span class="o">(</span><span class="nc">Integer</span> <span class="n">age</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">this</span><span class="o">.</span><span class="na">age</span> <span class="o">=</span> <span class="n">age</span><span class="o">;</span>
+        <span class="o">}</span>
+        <span class="kd">public</span> <span class="nc">String</span> <span class="nf">getName</span><span class="o">()</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="n">name</span><span class="o">;</span>
+        <span class="o">}</span>
+        <span class="kd">public</span> <span class="kt">void</span> <span class="nf">setName</span><span class="o">(</span><span class="nc">String</span> <span class="n">name</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">this</span><span class="o">.</span><span class="na">name</span> <span class="o">=</span> <span class="n">name</span><span class="o">;</span>
+        <span class="o">}</span>
+        <span class="nd">@Override</span>
+        <span class="kd">public</span> <span class="nc">String</span> <span class="nf">toString</span><span class="o">()</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="s">"User [age="</span> <span class="o">+</span> <span class="n">age</span> <span class="o">+</span> <span class="s">", name="</span> <span class="o">+</span> <span class="n">name</span> <span class="o">+</span> <span class="s">"]"</span><span class="o">;</span>
+        <span class="o">}</span>
+        
+    <span class="o">}</span>
+    
+    <span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">main</span><span class="o">(</span><span class="nc">String</span><span class="o">[]</span> <span class="n">args</span><span class="o">)</span> <span class="o">{</span>
+        <span class="c1">// new 一个User对象</span>
+        <span class="nc">User</span> <span class="n">user</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">User</span><span class="o">();</span>
+        <span class="n">user</span><span class="o">.</span><span class="na">setAge</span><span class="o">(</span><span class="mi">1</span><span class="o">);</span>
+        <span class="n">user</span><span class="o">.</span><span class="na">setName</span><span class="o">(</span><span class="s">"xiaojun"</span><span class="o">);</span>
+        
+        <span class="c1">//对象转json字符串</span>
+        <span class="nc">String</span> <span class="n">jsonString</span> <span class="o">=</span> <span class="no">JSON</span><span class="o">.</span><span class="na">toJSONString</span><span class="o">(</span><span class="n">user</span><span class="o">);</span>
+        <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"对象转json字符串:\t"</span> <span class="o">+</span> <span class="n">jsonString</span><span class="o">);</span>
+        <span class="c1">//对象转json对象</span>
+        <span class="n">user</span><span class="o">.</span><span class="na">setAge</span><span class="o">(</span><span class="mi">2</span><span class="o">);</span>
+        <span class="nc">JSONObject</span> <span class="n">jsonObject</span> <span class="o">=</span> <span class="o">(</span><span class="nc">JSONObject</span><span class="o">)</span><span class="no">JSON</span><span class="o">.</span><span class="na">toJSON</span><span class="o">(</span><span class="n">user</span><span class="o">);</span>
+        <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"对象转json:\t"</span> <span class="o">+</span> <span class="n">jsonObject</span><span class="o">);</span>
+        
+        <span class="c1">//json字符串转对象</span>
+        <span class="nc">User</span> <span class="n">parseObject</span> <span class="o">=</span> <span class="no">JSON</span><span class="o">.</span><span class="na">parseObject</span><span class="o">(</span><span class="n">jsonString</span><span class="o">,</span> <span class="nc">User</span><span class="o">.</span><span class="na">class</span><span class="o">);</span>
+        <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"json字符串转对象:\t"</span> <span class="o">+</span> <span class="n">parseObject</span><span class="o">);</span>
+        
+        <span class="c1">//json对象转对象</span>
+        <span class="nc">User</span> <span class="n">javaObject</span> <span class="o">=</span> <span class="no">JSON</span><span class="o">.</span><span class="na">toJavaObject</span><span class="o">(</span><span class="n">jsonObject</span><span class="o">,</span> <span class="nc">User</span><span class="o">.</span><span class="na">class</span><span class="o">);</span>
+        <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"json对象转对象:\t"</span> <span class="o">+</span> <span class="n">javaObject</span><span class="o">);</span>
+        
+        <span class="nc">User</span> <span class="n">user2</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">User</span><span class="o">();</span>
+        <span class="n">user2</span><span class="o">.</span><span class="na">setAge</span><span class="o">(</span><span class="mi">9</span><span class="o">);</span>
+        <span class="n">user2</span><span class="o">.</span><span class="na">setName</span><span class="o">(</span><span class="s">"xiaochen"</span><span class="o">);</span>
+        <span class="nc">ArrayList</span><span class="o">&lt;</span><span class="nc">User</span><span class="o">&gt;</span> <span class="n">users</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ArrayList</span><span class="o">&lt;&gt;();</span>
+        <span class="n">users</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">user2</span><span class="o">);</span>
+        <span class="n">users</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">user</span><span class="o">);</span>
+        <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"list 转json============\t"</span><span class="o">);</span>
+        <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"准备转json的list:\t"</span> <span class="o">+</span> <span class="n">users</span><span class="o">);</span>
+        
+        <span class="c1">//list 转json</span>
+        <span class="nc">String</span> <span class="n">jsonString2</span> <span class="o">=</span> <span class="no">JSON</span><span class="o">.</span><span class="na">toJSONString</span><span class="o">(</span><span class="n">users</span><span class="o">);</span>
+        <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"list转json:\t"</span> <span class="o">+</span> <span class="n">jsonString2</span><span class="o">);</span>
+        
+        <span class="c1">//json 转list</span>
+        <span class="nc">List</span><span class="o">&lt;</span><span class="nc">User</span><span class="o">&gt;</span> <span class="n">parseArray</span> <span class="o">=</span> <span class="no">JSON</span><span class="o">.</span><span class="na">parseArray</span><span class="o">(</span><span class="n">jsonString2</span><span class="o">,</span> <span class="nc">User</span><span class="o">.</span><span class="na">class</span><span class="o">);</span>
+        <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"json转list:\t"</span> <span class="o">+</span> <span class="n">parseArray</span><span class="o">);</span>
+    <span class="o">}</span>
+    
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>　　</p>
+
+<p>执行main方法Console控制台打印结果如下：</p>
+
+<p><img src="https://img2018.cnblogs.com/blog/1436620/201812/1436620-20181218152550378-1612908110.png" alt="img" /></p>
+
+<h2 id="jackson">Jackson</h2>
+
+<p>　与FastJson一样,Jackson 应该比fastjson 出现更早,api用法有些不一样,但是使用效果差不多</p>
+
+<p>　使用jackson编写的json工具类，JsonUtil：</p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="nn">java.util.List</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">com.fasterxml.jackson.core.JsonProcessingException</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">com.fasterxml.jackson.databind.JavaType</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">com.fasterxml.jackson.databind.ObjectMapper</span><span class="o">;</span>
+
+<span class="cm">/**
+ *
+ */</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">JsonUtil</span> <span class="o">{</span>
+
+    <span class="c1">// 定义jackson对象</span>
+    <span class="kd">private</span> <span class="kd">static</span> <span class="kd">final</span> <span class="nc">ObjectMapper</span> <span class="no">MAPPER</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ObjectMapper</span><span class="o">();</span>
+
+    <span class="cm">/**
+     * 将对象转换成json字符串。
+     * &lt;p&gt;Title: pojoToJson&lt;/p&gt;
+     * &lt;p&gt;Description: &lt;/p&gt;
+     * @param data
+     * @return
+     */</span>
+    <span class="kd">public</span> <span class="kd">static</span> <span class="nc">String</span> <span class="nf">objectToJson</span><span class="o">(</span><span class="nc">Object</span> <span class="n">data</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="nc">String</span> <span class="n">string</span> <span class="o">=</span> <span class="no">MAPPER</span><span class="o">.</span><span class="na">writeValueAsString</span><span class="o">(</span><span class="n">data</span><span class="o">);</span>
+            <span class="k">return</span> <span class="n">string</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">JsonProcessingException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">e</span><span class="o">.</span><span class="na">printStackTrace</span><span class="o">();</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="cm">/**
+     * 将json结果集转化为对象
+     *
+     * @param jsonData json数据
+     * @param clazz 对象中的object类型
+     * @return
+     */</span>
+    <span class="kd">public</span> <span class="kd">static</span> <span class="o">&lt;</span><span class="no">T</span><span class="o">&gt;</span> <span class="no">T</span> <span class="nf">jsonToPojo</span><span class="o">(</span><span class="nc">String</span> <span class="n">jsonData</span><span class="o">,</span> <span class="nc">Class</span><span class="o">&lt;</span><span class="no">T</span><span class="o">&gt;</span> <span class="n">beanType</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="no">T</span> <span class="n">t</span> <span class="o">=</span> <span class="no">MAPPER</span><span class="o">.</span><span class="na">readValue</span><span class="o">(</span><span class="n">jsonData</span><span class="o">,</span> <span class="n">beanType</span><span class="o">);</span>
+            <span class="k">return</span> <span class="n">t</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">Exception</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">e</span><span class="o">.</span><span class="na">printStackTrace</span><span class="o">();</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="cm">/**
+     * 将json数据转换成pojo对象list
+     * &lt;p&gt;Title: jsonToList&lt;/p&gt;
+     * &lt;p&gt;Description: &lt;/p&gt;
+     * @param jsonData
+     * @param beanType
+     * @return
+     */</span>
+    <span class="kd">public</span> <span class="kd">static</span> <span class="o">&lt;</span><span class="no">T</span><span class="o">&gt;</span><span class="nc">List</span><span class="o">&lt;</span><span class="no">T</span><span class="o">&gt;</span> <span class="nf">jsonToList</span><span class="o">(</span><span class="nc">String</span> <span class="n">jsonData</span><span class="o">,</span> <span class="nc">Class</span><span class="o">&lt;</span><span class="no">T</span><span class="o">&gt;</span> <span class="n">beanType</span><span class="o">)</span> <span class="o">{</span>
+        <span class="nc">JavaType</span> <span class="n">javaType</span> <span class="o">=</span> <span class="no">MAPPER</span><span class="o">.</span><span class="na">getTypeFactory</span><span class="o">().</span><span class="na">constructParametricType</span><span class="o">(</span><span class="nc">List</span><span class="o">.</span><span class="na">class</span><span class="o">,</span> <span class="n">beanType</span><span class="o">);</span>
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="nc">List</span><span class="o">&lt;</span><span class="no">T</span><span class="o">&gt;</span> <span class="n">list</span> <span class="o">=</span> <span class="no">MAPPER</span><span class="o">.</span><span class="na">readValue</span><span class="o">(</span><span class="n">jsonData</span><span class="o">,</span> <span class="n">javaType</span><span class="o">);</span>
+            <span class="k">return</span> <span class="n">list</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">Exception</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">e</span><span class="o">.</span><span class="na">printStackTrace</span><span class="o">();</span>
+        <span class="o">}</span>
+
+        <span class="k">return</span> <span class="kc">null</span><span class="o">;</span>
+    <span class="o">}</span>
+
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>本文不定期更新</p>
