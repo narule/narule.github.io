@@ -1,22 +1,10 @@
----
-layout: post
-title: "Blog Design and construction"
-date:   2020-07-23 21:03:36 +0530
-description: Convert markdown note files to blogs, and automatically update blog information
----
-
-搭建博客能学习不少新知识，自定义功能，下面说说如何设计构建'
-
-
-
-
-Blog deployment design and construction | 博客部署设计和构建
+# Blog deployment design and construction | 博客部署设计和构建
 
 >  Convert markdown note files to blogs, and automatically update blog information
 >
 >  将markdown笔记文件转为博客，且能够自动更新博客信息
 
-博客可以用来记笔记或者发布文章，是一种信息载体，我们可以把一些信息放到博客，方便在网络环境查阅。
+博客可以用来记笔记或者发布文章，是一种信息载体，我们可以把一些信息放到博客，方便在网络环境查阅''
 
 最近打算搭建个人博客，已知网络上的公共博客网站有博客园（国内），github（全球）都挺好用的，本人有在用，博客园和github也有挂的时候（访问不了），情况很少；
 
