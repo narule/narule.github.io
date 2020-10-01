@@ -34,7 +34,7 @@ Decrypt： encryption_content (Server) --- key(Client) ---> content(Client)
 
 
 
-#### <font style="color:red">User save key 用户妥善保管密钥<font>
+#### <font color=red>User save key 用户妥善保管密钥</font>
 
 因为服务端不保存用户的密钥，所以请用户自己妥善保管（自己能记住的）。其他各种账号密码信息你也可以保存到本站，甚至忘记，但是密钥必须记住不能忘记或者搞错，因为密钥只有用户有，服务端并不能在用户的加密信息上提供解密帮助。
 
