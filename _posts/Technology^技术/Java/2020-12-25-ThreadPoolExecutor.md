@@ -84,10 +84,6 @@ public int prestartAllCoreThreads() {
 
 addWorker时，会启动worker线程
 
-<details>
-	<summary>code:addWorker</summary>
-
-
 ```java
 private boolean addWorker(Runnable firstTask, boolean core) {
     	//......省去判断代码（是否需要添加worker的判断）
@@ -121,15 +117,13 @@ private boolean addWorker(Runnable firstTask, boolean core) {
     }
 ```
 
-</details>
+
 
 ### 接收任务放入队列
 
 每次客户端过来请求（http），就会提交一次处理任务，
 poller对象的run方法中开始 -> processKey() -> processSocket() -> executor.execute()
 
-<details>
-	<summary>code:poller -> processKey -> processSocket -> execute</summary>
 
 ```java
 //org.apache.tomcat.util.net.NioEndpoint.Poller.run() 
@@ -173,7 +167,7 @@ public boolean processSocket(SocketWrapperBase<S> socketWrapper,
     }
 ```
 
-</details>
+
 
 #### ThreadPoolExecutor.execute
 
