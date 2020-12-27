@@ -1,30 +1,37 @@
 # ReentrantLock锁
 
-ReentrantLock通过原子操作和阻塞实现锁原理，一般使用lock获取锁，unlock释放锁
+ReentrantLock是Java中常用的锁，属于乐观锁类型，多线程并发情况下。能保证共享数据安全性，线程间有序性
+ReentrantLock通过原子操作和阻塞实现锁原理，一般使用lock获取锁，unlock释放锁，
+下面说一下锁的基本使用和底层基本实现原理，lock和unlock底层
 
 lock的时候可能被其他线程获得所，那么此线程会阻塞自己，关键原理底层用到Unsafe类的API: CAS和park
 
-## 使用方式
+## 使用
 
-lock unlock对应
+`java.util.concurrent.locks.ReentrantLock`类
 
-### lock
-
-拿到锁，开始执行代码逻辑
+在多线程环境下使用，创建锁对象，调用lock()获取锁开始处理逻辑，处理完unlock()释放锁。注意使用的时候lock和unlock必须成对出现，不然可能出现死锁或者严重堵塞的情况
 
 ### unlock
-
-执行完代码后，释放锁，让其他线程去获取，需要注意的是，多个线程使用的锁对象必须是同一个
 
 ```java
 //创建锁对象
 ReentrantLock lock = new ReentrantLock();
 lock.lock(); //获取锁（锁定）
-// 中间执行代码，保证同一时间只有一个线程能运行此处的代码
+System.out.println("一段需要上锁的代码")
 lock.unlock(); //锁释放
 ```
 
-## 示例
+执行完代码后，释放锁，让其他线程去获取，需要注意的是，多个线程使用的锁对象必须是同一个。
+
+>什么情况需要上锁，就是在多线程不安全的情况下，多个线程操作同一个对象。
+>如多个线程同时操作一个队列，offer()添加对象，两个线程同时offer，因为不是原子操作，很可能一个线程添加成功，另一个线程添加失败，延伸到一些业务中是要杜绝的问题。
+>
+>可以用锁解决问题，我们可以定义一个队列同一时间只能被一个拿到锁的线程操作，即保证offer这种非原子操作完成后，释放锁，再让其他线程拿到锁后，才能offer，保证有序的offer，不会丢失信息。
+
+
+
+### 示例
 
 为了体现锁的作用，这里sleep睡眠0.1秒，增加哪个线程获取锁的随机性
 因为线程唤醒后，会开始尝试获取锁，多个线程下竞争一把锁是随机的
@@ -98,6 +105,30 @@ unlock threadName:name-12
 
 如果没有锁，情况可能是 12,13,13,10,10,10,12，没有锁其他线程可能插队执行`System.out.print`
 
+将上锁的代码注释后输出结果：
+
+```java
+lock threadName:name-11
+lock threadName:name-12
+ writeStart lock threadName:name-10
+ writeStart lock threadName:name-13
+ writeStart lock threadName:name-14
+ writeStart  writeStart 14,12,10,11,13,11,12,14,10,13,10,13,14,12,11,10,14,12,11,13,14,11,13,12,10,13,10,12,14,11,11,13,10,12,14,14,10,12,11,13,11,14,13,12,10,14,10,11,13,12,14,12,11,13,10,14,10,11,12,13,12,14,11,13,10,11,10,14,13,12,11, writeEnd
+unlock threadName:name-11
+
+13,12, writeEnd
+unlock threadName:name-12
+
+ writeEnd
+unlock threadName:name-13
+
+14, writeEnd
+unlock threadName:name-14
+
+10, writeEnd
+unlock threadName:name-10
+```
+
 
 
 ## 原理 
@@ -135,13 +166,22 @@ public final native boolean compareAndSwapInt(Object o, long offset,
 `java.util.concurrent.locks.AbstractQueuedSynchronizer` 类
 
 ```java
+private static final Unsafe unsafe = Unsafe.getUnsafe();
+private static final long stateOffset;
+static {
+        try {
+            stateOffset = unsafe.objectFieldOffset
+                (AbstractQueuedSynchronizer.class.getDeclaredField("state")); //获取成员变量state在内存中的偏移量
+
+        } catch (Exception ex) { throw new Error(ex); }
+    }
 protected final boolean compareAndSetState(int expect, int update) {
         // See below for intrinsics setup to support this
         return unsafe.compareAndSwapInt(this, stateOffset, expect, update);
     }
 ```
 
-在Java中，这个操作如果更新成功，返回true,失败返回false，通过这个机制，可以定义锁（乐观锁）。
+在Java中，**compareAndSetState**这个操作如果更新成功，返回true,失败返回false，通过这个机制，可以定义锁（乐观锁）。
 如三个线程A，B，C，在目标值为0的情况下，同时执行`compareAndSetState(0,1) ` 去修改它
 期望值是0，更新值是1，因为是原子操作，在第一个线程操作成功之后目标值变为1，返回true
 所以另外两个线程就因为期望值为0不等于1，返回false。
@@ -343,25 +383,13 @@ setState不做cas操作是因为，只有拥有锁的线程才调用unlock，不
 
 ```java
 private void unparkSuccessor(Node node) {
-        /*
-         * If status is negative (i.e., possibly needing signal) try
-         * to clear in anticipation of signalling.  It is OK if this
-         * fails or if status is changed by waiting thread.
-         */
         int ws = node.waitStatus;
         if (ws < 0)
             compareAndSetWaitStatus(node, ws, 0);
-
-        /*
-         * Thread to unpark is held in successor, which is normally
-         * just the next node.  But if cancelled or apparently null,
-         * traverse backwards from tail to find the actual
-         * non-cancelled successor.
-         */
         Node s = node.next;
         if (s == null || s.waitStatus > 0) {
             s = null;
-            for (Node t = tail; t != null && t != node; t = t.prev)
+            for (Node t = tail; t != null && t != node; t = t.prev) // 循环获取前面的节点
                 if (t.waitStatus <= 0)
                     s = t; //循环，找到链表最前面需要被唤醒的线程
         }
