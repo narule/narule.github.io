@@ -1,4 +1,4 @@
-# Tomcat如何使用线程池处理远程并发请求
+# Tomcat用线程池处理http并发请求
 
 通过了解学习tomcat如何处理并发请求，了解到线程池，锁，队列，unsafe类，下面的主要代码来自
 
@@ -46,7 +46,38 @@ handler 拒绝策略，当任务数过多，队列不能再存放任务时，该
 
 ## ThreadPoolExecutor在Tomcat中http请求的应用
 
-此线程池是tomcat用来在接收到远程请求后，将每次请求单独作为一个任务去处理使用，调用execute(Runnable)
+tomcat有一个自己的线程池类：**org.apache.tomcat.util.threads.ThreadPoolExecutor**，继承原先`java.util.concurrent.ThreadPoolExecutor`类，此线程池是tomcat用来在接收到远程请求后，将每次请求单独作为一个任务去处理使用，即调用execute(Runnable)，此类重写了execute方法，做了一点功能扩展，有一个功能是为了判断worker数量是否足够，判断不足够时，添加非核心线程worker
+
+`org.apache.tomcat.util.threads.ThreadPoolExecutor` 部分功能扩展代码：
+
+```java
+private final AtomicInteger submittedCount = new AtomicInteger(0); //提交任务总数
+// 重写 execute(Runnable command)
+public void execute(Runnable command) {
+        execute(command,0,TimeUnit.MILLISECONDS);
+    }
+public void execute(Runnable command, long timeout, TimeUnit unit) {
+        submittedCount.incrementAndGet(); // 提交任务之前，总数 + 1
+        try {
+            super.execute(command);
+        } catch (RejectedExecutionException rx) {
+        }
+    }
+
+//重写 afterExecute 添加任务完成后的逻辑
+@Override
+    protected void afterExecute(Runnable r, Throwable t) {
+        if (!(t instanceof StopPooledThreadException)) {
+            submittedCount.decrementAndGet(); // 完成任务后 总数 -1
+        }
+        if (t == null) {
+            stopCurrentThreadIfNeeded();
+        }
+    }
+```
+
+上面是tomcat自己的线程池判断是否需要添加非核心线程关键部分，在workQueue.offer时，会拿submittedCount这个数作为是否添加woker的一个依据。
+workQueue.offer见下文
 
 ### 初始化
 
@@ -195,18 +226,33 @@ public void execute(Runnable command) {
             else if (workerCountOf(recheck) == 0)
                 addWorker(null, false);
         }
-        else if (!addWorker(command, false))
+        else if (!addWorker(command, false)) //workQueue.offer 返回false时，添加非核心线程
             reject(command);
     }
 ```
+
+
 
 workQueue.offer(command) 最终完成了任务的提交(在tomcat处理远程http请求时)。
 
 #### workQueue.offer
 
-TaskQueue 是 BlockingQueue 具体实现类，workQueue.offer(command)实际代码：
+TaskQueue 是 BlockingQueue 具体实现类，TaskQueue在offer时，首先会判断一些条件，如果TaskQueue觉得worker数量不够，会添加worker，但不是核心线程；
+corePoolSize = 10， maximumPoolSize=200 时，并发量小，一般线程数10（核心线程数），若并发非常大，最多也只能创建200个worker线程，190个线程在任务处理完后，闲时状态下会被回收，worker数回到10的数量；
+workQueue.offer(command)实际代码：
 
 ```java
+//TaskQueue 
+@Override
+public boolean offer(Runnable o) {
+    if (parent.getSubmittedCount()<=(parent.getPoolSize())) return super.offer(o);
+    if (parent.getPoolSize()<parent.getMaximumPoolSize()) return false;
+    // 当任务提交过多：未处理任务数(SubmittedCount) > 线程数，并且 poolSize < maximumPoolSize 
+    // 返回false  ThreadPoolExecutor会 addWorker(command, false) 添加worker线程
+    return super.offer(o); 
+}
+
+//super.offer BlockingQueue 
 public boolean offer(E e) {
     if (e == null) throw new NullPointerException();
     final AtomicInteger count = this.count;
