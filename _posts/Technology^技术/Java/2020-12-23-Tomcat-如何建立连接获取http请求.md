@@ -24,7 +24,7 @@ acceptor.socket.acceptor()->
 
 ​									-> execute(socketWrapper) 创建线程
 
-
+![](http://www.narule.net/staticf/img/NioEndpoint2.png)
 
 ### 创建连接器
 
