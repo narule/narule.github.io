@@ -252,7 +252,7 @@ public boolean offer(Runnable o) {
     return super.offer(o); 
 }
 
-//super.offer BlockingQueue 
+//super.offer LinkedBlockingQueue 
 public boolean offer(E e) {
     if (e == null) throw new NullPointerException();
     final AtomicInteger count = this.count;
