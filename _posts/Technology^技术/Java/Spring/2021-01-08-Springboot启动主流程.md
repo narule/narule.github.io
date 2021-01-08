@@ -6,9 +6,7 @@
 
 0.启动main方法开始
 
-1.**初始化配置**：通过类加载器，（loadFactories）读取classpath下所有的spring.factories配置文件，创建一些初始配置对象；通知监听者应用程序启动开始
-
-//创建环境对象environment，用于读取环境配置 如 application.yml
+1.**初始化配置**：通过类加载器，（loadFactories）读取classpath下所有的spring.factories配置文件，创建一些初始配置对象；通知监听者应用程序启动开始，创建环境对象environment，用于读取环境配置 如 application.yml
 
 2.**创建应用程序上下文**-createApplicationContext，创建 bean工厂对象
 
@@ -127,8 +125,9 @@ private <T> Collection<T> getSpringFactoriesInstances(Class<T> type) {
 
 private <T> Collection<T> getSpringFactoriesInstances(Class<T> type, Class<?>[] parameterTypes, Object... args) {
     ClassLoader classLoader = getClassLoader();
-    // Use names and ensure unique to protect against duplicates
+    // 获取初始化类的类名
     Set<String> names = new LinkedHashSet<>(SpringFactoriesLoader.loadFactoryNames(type, classLoader));
+    // 通过这些类名实例化对象
     List<T> instances = createSpringFactoriesInstances(type, parameterTypes, classLoader, args, names);
     AnnotationAwareOrderComparator.sort(instances);
     return instances;
