@@ -11,7 +11,7 @@
 2.**创建应用程序上下文**-createApplicationContext，创建 bean工厂对象
 
 3.**刷新上下文（启动核心）**
-	3.1 配置工厂对象，包括上下文类加载器，拦截处理器，beanFactoryPostProcessor
+	3.1 配置工厂对象，包括上下文类加载器，对象发布处理器，beanFactoryPostProcessor
 	3.2 注册并实例化bean工厂发布处理器，并且调用这些处理器，对包扫描解析(主要是class文件)
 	3.3 注册并实例化bean发布处理器 beanPostProcessor
 	3.4 初始化一些与上下文有特别关系的bean对象（此处启动tomcat服务器）
@@ -326,7 +326,7 @@ protected void prepareBeanFactory(ConfigurableListableBeanFactory beanFactory) {
 
 ### 注册并实例化bean工厂发布处理器,并调用他们
 
-过程主要是工厂拦截器的创建和调用，逻辑较多
+过程主要是工厂发布处理器的创建和调用，逻辑较多
 
 ```java
 //// 3.2注册并实例化bean工厂处理器,并调用他们
@@ -376,17 +376,17 @@ registerBeanPostProcessors(beanFactory);
 
 BeanFactoryPostProcessors 和 BeanPostProcessors是有区别的
 
-BeanFactoryPostProcessors 是工厂拦截或者定义什么是bean，通过它，spring知道哪些是bean类，将他们注册或者做额外处理
+BeanFactoryPostProcessors 是工厂发布处理器，定义什么是bean，知道哪些是bean类，解析class文件，包括注解解析，成员对象依赖解析等；BeanPostProcessors主要使用BeanFactoryPostProcessors调用完之后工作
 
-BeanPostProcessors主要使用BeanFactoryPostProcessors调用完之后工作，BeanPostProcessors则在bean对像的创建之前后之后拦截处理，Spring代理对象的创建也是通过beanPostProcessor处理器
+一般在bean对像的创建之前或之后，BeanFactory调用这些bean处理器拦截处理，Spring代理对象的创建也是通过beanPostProcessor处理器来实现
 
 #### bean发布处理器生产AOP代理对象
 
-AnnotationAwareAspectJAutoProxyCreator实现了BeanPostProcessors，在bean对象创建的时候，会调用此对象的postProcessAfterInitialization做拦截处理。父类的方法`org.springframework.aop.framework.autoproxy.AbstractAutoProxyCreator`
+AnnotationAwareAspectJAutoProxyCreator实现了BeanPostProcessors，在bean被工厂创建之后，BeanFactory调用拦截器的postProcessAfterInitialization做拦截处理。此拦截器处理器实际执行的是父类`org.springframework.aop.framework.autoproxy.AbstractAutoProxyCreator`的方法
 
-比如一个UserServiceImp类有@service注解，并且有切点Aspectj注解增强方法，bean工厂创建userServiceImp后，代理拦截器检测到切点，会创建动态代理对象userServiceImp$$EnhancerBySpringCGLIB并返代理对象，而不是返回userServiceImp
+比如一个UserServiceImp类有@service注解，并且有切点Aspectj注解增强方法，bean工厂创建userServiceImp后，代理拦截器检测到AOP相关注解，会创建动态代理对象userServiceImp$$EnhancerBySpringCGLIB并返代理对象，而不是返回userServiceImp
 
-看一下Spring工厂部分bean拦截代码逻辑
+Spring工厂部分bean创建拦截代码逻辑
 
 ```java
 // org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.initializeBean(String, Object, RootBeanDefinition)
