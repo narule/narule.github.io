@@ -53,51 +53,51 @@ public class YourApplication {
 ```java
 // 静态方法 org.springframework.boot.SpringApplication.run(Class<?>[], String[])
 public static ConfigurableApplicationContext run(Class<?>[] primarySources, String[] args) {
-		return new SpringApplication(primarySources).run(args);
-	}
+    return new SpringApplication(primarySources).run(args);
+}
 
 // 构造方法
 public SpringApplication(ResourceLoader resourceLoader, Class<?>... primarySources) {
-		//.......... 
-//// 1.(loadFactories)读取classpath下所有的spring.factories配置文件
-    	// 并创建ApplicationContextInitializer 和 ApplicationListener 相关配置的对象
-		// 配置应用程序启动前的初始化对象
-		setInitializers((Collection) getSpringFactoriesInstances(ApplicationContextInitializer.class)); 
-    	// 配置应用程序启动前的监听器
-		setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class));
-		this.mainApplicationClass = deduceMainApplicationClass();
-	}
+    //.......... 
+    //// 1.(loadFactories)读取classpath下所有的spring.factories配置文件 ////
+    // 并创建ApplicationContextInitializer 和 ApplicationListener 相关配置的对象
+    // 配置应用程序启动前的初始化对象
+    setInitializers((Collection) getSpringFactoriesInstances(ApplicationContextInitializer.class)); 
+    // 配置应用程序启动前的监听器
+    setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class));
+    this.mainApplicationClass = deduceMainApplicationClass();
+}
 
 // 对象run方法 开始启动程序
 public ConfigurableApplicationContext run(String... args) {
-    	//......
-    	// 通知监听者启动开始
-		listeners.starting(); 
-		try {
-			// 创建应用程序环境 配置文件在此处读取(application.properties application.yml)
-			ConfigurableEnvironment environment = prepareEnvironment(listeners, applicationArguments);
-//// 2.创建应用程序上下文...此处创建了beanfactory
-			context = createApplicationContext();
-//// 3.刷新上下文（spring启动核心）
-			refreshContext(context);
-            
-//// 4.启动完成通知......
-			listeners.started(context);
-		}
-		catch (Throwable ex) {
-			handleRunFailure(context, ex, exceptionReporters, listeners);
-			throw new IllegalStateException(ex);
-		}
+    //......
+    // 通知监听者启动开始
+    listeners.starting(); 
+    try {
+        // 创建应用程序环境 配置文件在此处读取(application.properties application.yml)
+        ConfigurableEnvironment environment = prepareEnvironment(listeners, applicationArguments);
+        //// 2.创建应用程序上下文...此处创建了beanfactory ////
+        context = createApplicationContext();
+        //// 3.刷新上下文（spring启动核心） ////
+        refreshContext(context);
 
-		try {
-			listeners.running(context);
-		}
-		catch (Throwable ex) {
-			handleRunFailure(context, ex, exceptionReporters, null);
-			throw new IllegalStateException(ex);
-		}
-		return context;
-	}
+        //// 4.启动完成通知...... ////
+        listeners.started(context);
+    }
+    catch (Throwable ex) {
+        handleRunFailure(context, ex, exceptionReporters, listeners);
+        throw new IllegalStateException(ex);
+    }
+
+    try {
+        listeners.running(context);
+    }
+    catch (Throwable ex) {
+        handleRunFailure(context, ex, exceptionReporters, null);
+        throw new IllegalStateException(ex);
+    }
+    return context;
+}
 ```
 
 
@@ -122,22 +122,22 @@ setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class)
 
 //看一下getSpringFactoriesInstances方法
 private <T> Collection<T> getSpringFactoriesInstances(Class<T> type) {
-		return getSpringFactoriesInstances(type, new Class<?>[] {});
-	}
+    return getSpringFactoriesInstances(type, new Class<?>[] {});
+}
 
 private <T> Collection<T> getSpringFactoriesInstances(Class<T> type, Class<?>[] parameterTypes, Object... args) {
-		ClassLoader classLoader = getClassLoader();
-		// Use names and ensure unique to protect against duplicates
-		Set<String> names = new LinkedHashSet<>(SpringFactoriesLoader.loadFactoryNames(type, classLoader));
-		List<T> instances = createSpringFactoriesInstances(type, parameterTypes, classLoader, args, names);
-		AnnotationAwareOrderComparator.sort(instances);
-		return instances;
-	}
+    ClassLoader classLoader = getClassLoader();
+    // Use names and ensure unique to protect against duplicates
+    Set<String> names = new LinkedHashSet<>(SpringFactoriesLoader.loadFactoryNames(type, classLoader));
+    List<T> instances = createSpringFactoriesInstances(type, parameterTypes, classLoader, args, names);
+    AnnotationAwareOrderComparator.sort(instances);
+    return instances;
+}
 
 public static List<String> loadFactoryNames(Class<?> factoryType, @Nullable ClassLoader classLoader) {
-		String factoryTypeName = factoryType.getName();
-		return loadSpringFactories(classLoader).getOrDefault(factoryTypeName, Collections.emptyList());
-	}
+    String factoryTypeName = factoryType.getName();
+    return loadSpringFactories(classLoader).getOrDefault(factoryTypeName, Collections.emptyList());
+}
 
 // loadSpringFactories(classLoader)读取运行环境中所有META-INF/spring.factories配置
 ```
@@ -195,28 +195,28 @@ ConfigurableEnvironment environment = prepareEnvironment(listeners, applicationA
 context = createApplicationContext();
 
 protected ConfigurableApplicationContext createApplicationContext() {
-    	// 上下文创建的判断逻辑
-		Class<?> contextClass = this.applicationContextClass;
-		if (contextClass == null) {
-			try {
-				switch (this.webApplicationType) {
-				case SERVLET:
-					contextClass = Class.forName(DEFAULT_SERVLET_WEB_CONTEXT_CLASS);
-					break;
-				case REACTIVE:
-					contextClass = Class.forName(DEFAULT_REACTIVE_WEB_CONTEXT_CLASS);
-					break;
-				default:
-					contextClass = Class.forName(DEFAULT_CONTEXT_CLASS);
-				}
-			}
-			catch (ClassNotFoundException ex) {
-				throw new IllegalStateException(
-						"Unable create a default ApplicationContext, please specify an ApplicationContextClass", ex);
-			}
-		}
-		return (ConfigurableApplicationContext) BeanUtils.instantiateClass(contextClass);
-	}
+    // 上下文创建的判断逻辑
+    Class<?> contextClass = this.applicationContextClass;
+    if (contextClass == null) {
+        try {
+            switch (this.webApplicationType) {
+                case SERVLET:
+                    contextClass = Class.forName(DEFAULT_SERVLET_WEB_CONTEXT_CLASS);
+                    break;
+                case REACTIVE:
+                    contextClass = Class.forName(DEFAULT_REACTIVE_WEB_CONTEXT_CLASS);
+                    break;
+                default:
+                    contextClass = Class.forName(DEFAULT_CONTEXT_CLASS);
+            }
+        }
+        catch (ClassNotFoundException ex) {
+            throw new IllegalStateException(
+                "Unable create a default ApplicationContext, please specify an ApplicationContextClass", ex);
+        }
+    }
+    return (ConfigurableApplicationContext) BeanUtils.instantiateClass(contextClass);
+}
 
 public static final String DEFAULT_SERVLET_WEB_CONTEXT_CLASS = "org.springframework.boot."
 			+ "web.servlet.context.AnnotationConfigServletWebServerApplicationContext";
@@ -228,7 +228,6 @@ public static final String DEFAULT_SERVLET_WEB_CONTEXT_CLASS = "org.springframew
 ```java
 public class AnnotationConfigServletWebServerApplicationContext extends ServletWebServerApplicationContext
 		implements AnnotationConfigRegistry {
-
     // 构造方法
 	public AnnotationConfigServletWebServerApplicationContext() {
 		this.reader = new AnnotatedBeanDefinitionReader(this);
@@ -321,9 +320,9 @@ protected void prepareBeanFactory(ConfigurableListableBeanFactory beanFactory) {
 ```java
 invokeBeanFactoryPostProcessors(beanFactory);
 protected void invokeBeanFactoryPostProcessors(ConfigurableListableBeanFactory beanFactory) {
-		PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors(beanFactory, getBeanFactoryPostProcessors());
-		// ......
-	}
+    PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors(beanFactory, getBeanFactoryPostProcessors());
+    // ......
+}
 ```
 
 过程主要是工厂拦截器的创建和调用，逻辑较多
@@ -396,107 +395,4 @@ AbstractAutoProxyCreator在此循环中被调用，比如在userServiceImp服务
  onRefresh();
 
 // org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext
-// 子类context重写
-@Override
-protected void onRefresh() {
-    super.onRefresh();
-    try {
-        createWebServer(); //创建tomcat服务器
-    }
-    catch (Throwable ex) {
-        throw new ApplicationContextException("Unable to start web server", ex);
-    }
-}
-
-private void createWebServer() {
-    WebServer webServer = this.webServer;
-    ServletContext servletContext = getServletContext();
-    if (webServer == null && servletContext == null) {
-        ServletWebServerFactory factory = getWebServerFactory();
-        this.webServer = factory.getWebServer(getSelfInitializer()); 
-        // 此处创建了服务器
-        // org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory.getWebServer()
-    }
-    // ......
-    initPropertySources();
-}
-```
-
-
-
-### 实例化所有bean工厂缓存的bean对象
-
-服务器启动后，创建spring工厂里面缓存的bean信息（没有被创建的单例）
-
-```java
-finishBeanFactoryInitialization(beanFactory);
-
-protected void finishBeanFactoryInitialization(ConfigurableListableBeanFactory beanFactory) {
-		// ......
-    	// Instantiate all remaining (non-lazy-init) singletons.
-		beanFactory.preInstantiateSingletons();
-	}
-```
-
-
-
-### 发布通知-通知上下文刷新完成 
-
-上下文初始化完成之后，启动tomcat服务器
-
-```java
-finishRefresh();
-
-// super.finishRefresh
-protected void finishRefresh() {
-    // ...... 发布刷行完成事件
-    // Publish the final event.
-    publishEvent(new ContextRefreshedEvent(this));
-}
-
-// org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext.finishRefresh()
-@Override
-protected void finishRefresh() {
-    super.finishRefresh();
-    WebServer webServer = startWebServer();// 启动服务器
-    if (webServer != null) {
-        publishEvent(new ServletWebServerInitializedEvent(webServer, this));
-    }
-}
-```
-
-
-
-
-
-## **通知监听者-启动程序完成**
-
-发布通知监听器启动完成，监听器会根据事件类型做个性化操作
-
-```java
-listeners.started(context);
-listeners.running(context);
-
-void started(ConfigurableApplicationContext context) {
-    for (SpringApplicationRunListener listener : this.listeners) {
-        listener.started(context);
-    }
-}
-
-void running(ConfigurableApplicationContext context) {
-    for (SpringApplicationRunListener listener : this.listeners) {
-        listener.running(context);
-    }
-}
-
-@Override
-public void started(ConfigurableApplicationContext context) {
-    context.publishEvent(new ApplicationStartedEvent(this.application, this.args, context));
-}
-
-@Override
-public void running(ConfigurableApplicationContext context) {
-    context.publishEvent(new ApplicationReadyEvent(this.application, this.args, context));
-}
-```
-
+// 子类cont
