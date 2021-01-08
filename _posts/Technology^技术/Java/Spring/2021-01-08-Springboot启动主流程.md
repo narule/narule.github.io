@@ -252,9 +252,15 @@ public GenericApplicationContext() {
 
 ## 刷新应用上下文
 
-创建好上下文之后，开始刷新上下文，这是做了很多
+创建好上下文之后，开始刷新上下文，这里做了很多
 
-工厂配置，bean处理器配置，类的扫描，解析，bean定义，bean类信息缓存，服务器创建，bean实例化，反射对象的创建等
+工厂配置，bean处理器配置，类的扫描，解析，bean定义，bean类信息缓存，服务器创建，bean实例化，动态代理对象的创建等，
+
+**spring中注册bean信息和实例化bean是两件事情。**
+
+注册bean信息不是创建bean对象，是解析bean类获取详细信息，会创建BeanDefinition对象，携带bean类的字节码和方法等信息，把BeanDefinition对象注册保存到工厂BeanDefinitionMap中。
+
+工厂实例化bean时直接BeanDefinitionsMap.get(beanName) 获取bean的字节码信息，通过反射创建对象，然后将bean对象保存到beansMap中。
 
 ```java
 refreshContext(context); //刷新上下文
@@ -295,6 +301,8 @@ public void refresh() throws BeansException, IllegalStateException {
 
 
 ### 配置工厂对象，包括上下文类加载器，bean工厂发布处理器
+
+工厂创建好后，首先配置的是类加载器，然后是一些对象发布处理器（拦截器）
 
 ```java
 protected void prepareBeanFactory(ConfigurableListableBeanFactory beanFactory) {
