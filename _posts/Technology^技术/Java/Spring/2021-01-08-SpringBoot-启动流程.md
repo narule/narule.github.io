@@ -22,7 +22,9 @@
 
 
 
-启动中，大部分对象都是通过BeanFactory创建，下面是流程代码，部分省略
+启动中，大部分对象都是BeanFactory对象通过反射创建
+
+SpringBoot启动解析代码过多，讲下整体流程部分主要代码，部分省略
 
 ## 启动
 
@@ -257,7 +259,7 @@ public GenericApplicationContext() {
 
 注册bean信息不是创建bean对象，是解析bean类获取详细信息，会创建BeanDefinition对象，携带bean类的字节码和方法等信息，把BeanDefinition对象注册保存到工厂BeanDefinitionMap中。
 
-工厂实例化bean时直接BeanDefinitionsMap.get(beanName) 获取bean的字节码信息，通过反射创建对象，然后将bean对象保存到beansMap中。
+工厂实例化bean时直接BeanDefinitionMap.get(beanName) 获取bean的字节码信息，通过反射创建对象，然后将bean对象保存到singletonObjects中。
 
 ```java
 refreshContext(context); //刷新上下文
@@ -552,4 +554,3 @@ public void running(ConfigurableApplicationContext context) {
 
 
 不定期更新...
-
