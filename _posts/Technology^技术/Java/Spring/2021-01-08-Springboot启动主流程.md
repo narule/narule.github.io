@@ -409,4 +409,94 @@ protected void onRefresh() {
 }
 
 private void createWebServer() {
-  
+    WebServer webServer = this.webServer;
+    ServletContext servletContext = getServletContext();
+    if (webServer == null && servletContext == null) {
+        ServletWebServerFactory factory = getWebServerFactory();
+        this.webServer = factory.getWebServer(getSelfInitializer()); 
+        // 此处创建了服务器
+        // org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory.getWebServer()
+    }
+    // ......
+    initPropertySources();
+}
+```
+
+
+
+### 实例化所有bean工厂缓存的bean对象
+
+服务器启动后，创建spring工厂里面缓存的bean信息（没有被创建的单例）
+
+```java
+finishBeanFactoryInitialization(beanFactory);
+
+protected void finishBeanFactoryInitialization(ConfigurableListableBeanFactory beanFactory) {
+		// ......
+    	// Instantiate all remaining (non-lazy-init) singletons.
+		beanFactory.preInstantiateSingletons();
+	}
+```
+
+
+
+### 发布通知-通知上下文刷新完成 
+
+上下文初始化完成之后，启动tomcat服务器
+
+```java
+finishRefresh();
+
+// super.finishRefresh
+protected void finishRefresh() {
+    // ...... 发布刷行完成事件
+    // Publish the final event.
+    publishEvent(new ContextRefreshedEvent(this));
+}
+
+// org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext.finishRefresh()
+@Override
+protected void finishRefresh() {
+    super.finishRefresh();
+    WebServer webServer = startWebServer();// 启动服务器
+    if (webServer != null) {
+        publishEvent(new ServletWebServerInitializedEvent(webServer, this));
+    }
+}
+```
+
+
+
+
+
+## **通知监听者-启动程序完成**
+
+发布通知监听器启动完成，监听器会根据事件类型做个性化操作
+
+```java
+listeners.started(context);
+listeners.running(context);
+
+void started(ConfigurableApplicationContext context) {
+    for (SpringApplicationRunListener listener : this.listeners) {
+        listener.started(context);
+    }
+}
+
+void running(ConfigurableApplicationContext context) {
+    for (SpringApplicationRunListener listener : this.listeners) {
+        listener.running(context);
+    }
+}
+
+@Override
+public void started(ConfigurableApplicationContext context) {
+    context.publishEvent(new ApplicationStartedEvent(this.application, this.args, context));
+}
+
+@Override
+public void running(ConfigurableApplicationContext context) {
+    context.publishEvent(new ApplicationReadyEvent(this.application, this.args, context));
+}
+```
+
