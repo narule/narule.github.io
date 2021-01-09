@@ -184,8 +184,6 @@ ConfigurableEnvironment environment = prepareEnvironment(listeners, applicationA
 
 ## 创建应用上下文
 
-**创建应用上下文**
-
 初始化和配置好后，开始创建应用程序上下文，createApplicationContext ，关键的工厂BeanFactory就是此处创建，具体逻辑如下
 
 ```java
