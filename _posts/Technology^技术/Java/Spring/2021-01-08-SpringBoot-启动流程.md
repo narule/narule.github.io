@@ -1,6 +1,6 @@
 # SpringBoot-启动流程
 
-平时开发springboot项目的时候，一个SpringApplication注解加一个main方法就可以启动服务器运行起来（默认tomcat），看了下源码，这里讲下认为主要的流程
+平时开发springboot项目的时候，一个SpringBootApplication注解加一个main方法就可以启动服务器运行起来（默认tomcat），看了下源码，这里讲下认为主要的流程
 
 **主要流程如下**
 
@@ -26,6 +26,8 @@
 
 SpringBoot的启动解析代码过多，下文是整体流程的部分主要代码
 
+
+
 ## 启动
 
 启动程序：
@@ -43,6 +45,8 @@ public class YourApplication {
     
 }
 ```
+
+
 
 ### 启动类
 
@@ -253,6 +257,8 @@ public GenericApplicationContext() {
 
 工厂配置，bean处理器配置，类的扫描，解析，bean定义，bean类信息缓存，服务器创建，bean实例化，动态代理对象的创建等，
 
+
+
 **spring中注册bean信息和实例化bean是两件事情。**
 
 注册bean信息不是创建bean对象，是解析bean类获取详细信息，会创建BeanDefinition对象，携带bean类的字节码和方法等信息，把BeanDefinition对象注册保存到工厂BeanDefinitionMap中。
@@ -370,6 +376,8 @@ BeanDefinitionRegistryPostProcessor的子类对象在此处创建并调`postProc
 
 其中`org.springframework.context.annotation.ConfigurationClassPostProcessor`就是BeanDefinitionRegistryPostProcessor的子类，是一个spring的类解析器，扫描包下所有的类，解析出bean类，注册到bean工厂由此类主要参与，其中有不少递归
 
+
+
 ### 注册并实例化bean发布处理器
 
 ```java
@@ -382,6 +390,8 @@ BeanFactoryPostProcessors 和 BeanPostProcessors是有区别的
 BeanFactoryPostProcessors 是工厂发布处理器，定义什么是bean，知道哪些是bean类，解析class文件，包括注解解析，成员对象依赖解析等；BeanPostProcessors主要在BeanFactoryPostProcessors调用完之后工作
 
 一般在bean对像的创建之前或之后，BeanFactory调用这些bean处理器拦截处理，Spring代理对象的创建也是通过beanPostProcessor处理器来实现
+
+
 
 #### bean发布处理器生产AOP代理对象
 
@@ -426,6 +436,8 @@ public Object applyBeanPostProcessorsAfterInitialization(Object existingBean, St
 ```
 
 AbstractAutoProxyCreator在此循环中被调用，比如在userServiceImp服务类上有事务注解@Transactional，一般就会被拦截生成代理对象，添加额外的处理事务的功能代码，返回增强的代理对象
+
+
 
 ### 初始化一些与上下文有特别关系的bean对象
 
@@ -518,8 +530,6 @@ protected void finishRefresh() {
 }
 
 ```
-
-
 
 
 
