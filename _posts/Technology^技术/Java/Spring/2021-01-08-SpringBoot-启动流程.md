@@ -14,9 +14,9 @@
 	3.1 配置工厂对象，包括上下文类加载器，对象发布处理器，beanFactoryPostProcessor
 	3.2 注册并实例化bean工厂发布处理器，并且调用这些处理器，对包扫描解析(主要是class文件)
 	3.3 注册并实例化bean发布处理器 beanPostProcessor
-	3.4 初始化一些与上下文有特别关系的bean对象（此处启动tomcat服务器）
+	3.4 初始化一些与上下文有特别关系的bean对象（创建tomcat服务器）
 	3.5 实例化所有bean工厂缓存的bean对象（剩下的）
-	3.6 发布通知-通知上下文刷新完成
+	3.6 发布通知-通知上下文刷新完成（启动tomcat服务器）
 
 4.**通知监听者-启动程序完成**
 
@@ -276,15 +276,20 @@ public void refresh() throws BeansException, IllegalStateException {
         prepareBeanFactory(beanFactory);
         try {       
             postProcessBeanFactory(beanFactory);
+            
             // 3.2注册并实例化bean工厂处理器,并调用他们
             invokeBeanFactoryPostProcessors(beanFactory);
+            
             // 3.3注册并实例化bean处理器
             registerBeanPostProcessors(beanFactory);
-            // 3.4 初始化一些与上下文有特别关系的bean对象（此处启动tomcat服务器）
+            
+            // 3.4 初始化一些与上下文有特别关系的bean对象（包括创建tomcat）
             onRefresh();
+            
             // 3.5 实例化所有bean工厂缓存的bean对象（剩下的）.
             finishBeanFactoryInitialization(beanFactory);
-            // 3.6 发布通知-通知上下文刷新完成
+            
+            // 3.6 发布通知-通知上下文刷新完成（包括启动tomcat）
             finishRefresh();
         }
         catch (BeansException ex) {// ......Propagate exception to caller.
@@ -554,3 +559,4 @@ public void running(ConfigurableApplicationContext context) {
 
 
 不定期更新...
+
