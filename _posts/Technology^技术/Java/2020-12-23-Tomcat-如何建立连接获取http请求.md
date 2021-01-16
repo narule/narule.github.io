@@ -21,13 +21,6 @@ connector 连接 protocol 协议 endpoint终端 socket插座，端口连接
 
 创建初始化
 
-```java
-connector -> protocol -> endpoint -> socket;
-
-```
-
-
-
 ![](http://www.narule.net/staticf/img/NioEndpoint2.png)
 
 ### 创建连接器
