@@ -23,6 +23,7 @@ connector 连接 protocol 协议 endpoint终端 socket插座，端口连接
 
 创建初始化
 
+```
 connector -> protocol -> endpoint -> socket 
 
 接收请求创建任务
@@ -34,6 +35,9 @@ acceptor.socket.acceptor()->
 ​					-> poller(socketWrapper) 
 
 ​									-> execute(socketWrapper) 创建线程
+```
+
+
 
 ![](http://www.narule.net/staticf/img/NioEndpoint2.png)
 
@@ -43,7 +47,7 @@ Conector类
 
 `org.apache.catalina.connector.Connector`
 
-空参构造connector() -> connector(http/1.1) 
+`空参构造connector() -> connector(http/1.1) `
 
 ```java
 /**
@@ -62,7 +66,7 @@ public Connector() {
 
 `org.apache.coyote.http11.Http11NioProtocol`
 
--> new Http11NioProtocol()
+`-> new Http11NioProtocol()`
 
  ```java
 public Http11NioProtocol() {
@@ -76,7 +80,7 @@ public Http11NioProtocol() {
 
 `org.apache.tomcat.util.net.NioEndpoint`
 
--> new NioEndPoint()
+`-> new NioEndPoint()`
 
 创建之后如何被启动？见springboot启动tomcat方式
 
@@ -146,7 +150,7 @@ startAcceptorThread();
 
 #### 初始化线程池配置
 
--> createExecutor()    用于处理用户请求
+`-> createExecutor()`    用于处理用户请求
 
 指定 备用线程，对大线程数，队列类型，超时时间，和线程工厂
 
