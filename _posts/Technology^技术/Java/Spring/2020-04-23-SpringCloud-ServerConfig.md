@@ -2,7 +2,7 @@
 title: SpringCloud-ServerConfig
 author: Narule
 date: 2020-04-23 20:10:00 +0800
-categories: [Blogging, Technology^技术, Java, Spring]
+categories: [Technology^技术, Java, Spring]
 tags: [writing, Java, Spring]
 ---
 
