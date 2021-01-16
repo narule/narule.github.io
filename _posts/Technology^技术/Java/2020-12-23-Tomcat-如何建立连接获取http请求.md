@@ -2,7 +2,7 @@
 title: Tomcat如何建立连接获取http请求
 author: Narule
 date: 2020-12-23 22:10:00 +0800
-categories: [Blogging, Technology^技术, Java]
+categories: [Technology^技术, Java]
 tags: [writing, Java, Tomcat]
 ---
 
