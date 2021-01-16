@@ -2,7 +2,7 @@
 title: ReentrantLock锁
 author: Narule
 date: 2020-12-26 21:10:00 +0800
-categories: [Blogging, Technology^技术, Java]
+categories: [Technology^技术, Java]
 tags: [writing, Java]
 
 ---
