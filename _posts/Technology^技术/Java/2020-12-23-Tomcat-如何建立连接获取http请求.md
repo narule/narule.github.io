@@ -1,11 +1,23 @@
 ---
-title: Tomcat如何建立连接获取http请求
+title: Tomcat-如何建立连接获取http请求
 author: Narule
 date: 2020-12-23 22:10:00 +0800
 categories: [Blogging, Technology^技术, Java]
 tags: [writing, Java, Tomcat]
 
 ---
+
+
+
+# Tomcat-处理http请求
+
+学习探讨tomcat如何建立网络连接协议，并处理客户端过来的请求
+
+## 建立http网络连接，指定通信协议
+
+tomcat在创建时，会创建连接对象，负责处理客户端的请求，基于socket
+
+connector 连接 protocol 协议 endpoint终端 socket插座，端口连接
 
 
 
