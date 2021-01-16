@@ -19,6 +19,13 @@ tomcat在创建时，会创建连接对象，负责处理客户端的请求，�
 
 connector 连接 protocol 协议 endpoint终端 socket插座，端口连接
 
+创建初始化
+
+```
+connector -> protocol -> endpoint -> socket 
+
+```
+
 
 
 ![](http://www.narule.net/staticf/img/NioEndpoint2.png)
