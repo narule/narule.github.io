@@ -21,6 +21,22 @@ connector 连接 protocol 协议 endpoint终端 socket插座，端口连接
 
 创建初始化
 
+```java
+
+接收请求创建任务
+
+acceptor.socket.acceptor()->
+
+		socketWrapper(携带通信信息)
+
+			-> poller(socketWrapper) 
+
+				-> execute(socketWrapper) 创建线程
+
+```
+
+
+
 ![](http://www.narule.net/staticf/img/NioEndpoint2.png)
 
 ### 创建连接器
