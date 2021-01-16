@@ -1,3 +1,12 @@
+---
+title: ReentrantLock锁
+author: Narule
+date: 2020-12-26 21:10:00 +0800
+categories: [Blogging, Markdown]
+tags: [writing, Java]
+
+---
+
 # ReentrantLock锁
 
 ReentrantLock是Java中常用的锁，属于乐观锁类型，多线程并发情况下。能保证共享数据安全性，线程间有序性
