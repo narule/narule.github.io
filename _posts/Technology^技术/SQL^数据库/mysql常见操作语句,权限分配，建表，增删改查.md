@@ -2,7 +2,7 @@
 title: mysql常见操作语句,权限分配，建表，增删改查
 author: Narule
 date: 2019-11-27 15:00:00 +0800
-categories: [Blogging, Technology^技术, SQL^数据库]
+categories: [Technology^技术, SQL^数据库]
 tags: [writing, Mysql]
 ---
 
