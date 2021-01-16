@@ -2,7 +2,7 @@
 title: Java开发中json使用，各对象与json相互转换
 author: Narule
 date: 2018-12-11 20:10:00 +0800
-categories: [Blogging, Technology^技术, Java]
+categories: [Technology^技术, Java]
 tags: [writing, Java, Json]
 
 ---
