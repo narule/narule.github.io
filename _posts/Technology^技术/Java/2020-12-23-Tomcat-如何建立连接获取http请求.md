@@ -1,44 +1,42 @@
 ---
-title: Tomcat-如何建立连接获取http请求
+title: Tomcat如何建立连接获取http请求
 author: Narule
 date: 2020-12-23 22:10:00 +0800
 categories: [Blogging, Technology^技术, Java]
 tags: [writing, Java, Tomcat]
-
 ---
 
-
-
-# Tomcat-处理http请求
+# tomcat-如何建立连接，获取远程请求
 
 学习探讨tomcat如何建立网络连接协议，并处理客户端过来的请求
 
-## 建立http网络连接，指定通信协议
+
+
+## 建立网络连接，指定http1.1通信协议
 
 tomcat在创建时，会创建连接对象，负责处理客户端的请求，基于socket
 
 connector 连接 protocol 协议 endpoint终端 socket插座，端口连接
 
-创建初始化
 
-```java
-connector  > protocol > endpoint  > socket;
+
+创建初始化，对象创建顺序
+
+connector > protocol > endpoint > socket 
 
 接收请求创建任务
 
 acceptor.socket.acceptor()->
 
-		socketWrapper(携带通信信息)
+​	 socketWrapper(携带通信信息)
 
-			-> poller(socketWrapper) 
+​					-> poller(socketWrapper) 
 
-				-> execute(socketWrapper) 创建线程
+​									-> execute(socketWrapper) 创建线程
 
-```
+![](https://img2020.cnblogs.com/blog/1436620/202012/1436620-20201228211436301-982321576.png)
 
 
-
-![](http://www.narule.net/staticf/img/NioEndpoint2.png)
 
 ### 创建连接器
 
@@ -46,7 +44,7 @@ Conector类
 
 `org.apache.catalina.connector.Connector`
 
-`空参构造connector() -> connector(http/1.1) `
+空参构造connector() -> connector(http/1.1) 
 
 ```java
 /**
@@ -59,13 +57,13 @@ public Connector() {
 
 
 
-### 指定网络连接协议http11
+### 指定通信协议http11
 
 类 
 
 `org.apache.coyote.http11.Http11NioProtocol`
 
-`-> new Http11NioProtocol()`
+-> new Http11NioProtocol()
 
  ```java
 public Http11NioProtocol() {
@@ -79,7 +77,7 @@ public Http11NioProtocol() {
 
 `org.apache.tomcat.util.net.NioEndpoint`
 
-`-> new NioEndPoint()`
+-> new NioEndPoint()
 
 创建之后如何被启动？见springboot启动tomcat方式
 
@@ -149,7 +147,7 @@ startAcceptorThread();
 
 #### 初始化线程池配置
 
-`-> createExecutor()`    用于处理用户请求
+-> createExecutor()    用于处理用户请求
 
 指定 备用线程，对大线程数，队列类型，超时时间，和线程工厂
 
@@ -251,14 +249,14 @@ Poller负责接收包装后的socket请求，放入队列，
 
 再通过selector获取selectionKeys 
 
-迭代循环获取对应的socket，最终提交任务给线程池，线程池来读写处理socketWrapper等后续操作
+迭代循环获取对应的socket，提交任务（线程），线程读写处理socketWrapper等后续操作
 
 ```java
 public void run() {
             // Loop until destroy() is called
             while (true) {
                 // events()方法 poller队列任务处理  将IOChannel Selector socketWrapper 关联 
-				hasEvents = events();
+		hasEvents = events();
                 //......省略
 				
                 Iterator<SelectionKey> iterator =
@@ -433,7 +431,7 @@ protected boolean setSocketOptions(SocketChannel socket) {
             NioSocketWrapper newWrapper = new NioSocketWrapper(channel, this);
             
             socketWrapper.setKeepAliveLeft(NioEndpoint.this.getMaxKeepAliveRequests());
-            poller.register(socketWrapper);//poller 注册socket
+            poller.register(socketWrapper);
             return true;
         } catch (Throwable t) {
             ExceptionUtils.handleThrowable(t);
