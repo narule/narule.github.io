@@ -23,3 +23,6 @@ order: 4
 动漫（《千》，《红猪》，《亲吻j》...）
 
 narule@163.com
+
+cnblogs: www.cnblogs.com/narule
+
