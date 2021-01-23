@@ -9,7 +9,7 @@
 # --------------------------
 title: Narule                          # the main title
 
-tagline: A Blog for Article   # it will display as the sub-title
+tagline: A Blog for Article; Chinese Blog is www.cnblogs.com/narule   # it will display as the sub-title
 
 description: >-                        # used by seo meta and the atom feed
   A minimal, portfolio, sidebar,
@@ -17,7 +17,7 @@ description: >-                        # used by seo meta and the atom feed
   and focuses on text presentation.
 
 # fill in the protocol & hostname for your site, e.g., 'https://username.github.io'
-url: ''
+url: 'https://narule.github.io'
 
 author: Narule                  # change to your full name
 
