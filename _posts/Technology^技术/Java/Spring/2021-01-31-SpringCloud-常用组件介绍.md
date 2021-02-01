@@ -18,7 +18,7 @@ Spring Cloud 是基于Springboot的分布式云服务架构，SpringCloud的设�
 
 > CAP定理 指分区容错性 服务可用性 数据一致性，分布式环境：
 >
-> ​	容错性，允许部分机器故障，但是系统人能正常运作
+> ​	容错性，允许部分机器故障，但是系统人仍能正常运作
 >
 > ​	服务可用性   任何时候调用服务有响应
 >
@@ -40,7 +40,7 @@ SpringCloud-Config 服务配置，提供统一配置功能。多个服务，或�
 
 SpringCloud-Eureka 服务注册，提供注册服务。服务启动后，可以提供自己的服务地址注册到Eureka，暴露出来提供给其他人调用（服务可用性相关）
 
-SpringCloud-OpenFeign 服务代理，提供代理调用服务。A服务要调用B服务，可以通过feign，feign是服务调用更方便（远程服务调用相关）
+SpringCloud-OpenFeign 服务代理，提供代理调用服务。A服务要调用B服务，可以通过feign，feign是服务调用更方便（远程服务调用相关，有断路器，防止服务雪崩）
 
 SpringCloud-Gateway 网关路由服务，提供代理访问转发。 访问narule.net/api 实际访问narule.github.io/api 可以通过Gateway来实现。（访问安全相关）
 
