@@ -46,7 +46,7 @@ SpringCloud-Gateway 网关路由服务，提供代理访问转发。 访问narul
 
 
 
-还有很多其他组件，比如redis相关组件用于数据一致性访问，kafka用于高吞吐消息队列等，本文主要讲上面提高的四个，通过代码简单说明如何使用。
+还有很多其他组件，比如redis相关组件用于数据一致性访问，kafka用于高吞吐消息队列等，本文主要讲上面提到的四个，通过代码简单说明如何使用。
 
 example 代码地址：[springcloud-example](https://github.com/narule/springcloud-example)
 
