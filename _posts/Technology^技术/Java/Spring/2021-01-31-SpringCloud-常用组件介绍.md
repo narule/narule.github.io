@@ -40,7 +40,7 @@ SpringCloud-Config 服务配置，提供统一配置功能。多个服务，或�
 
 SpringCloud-Eureka 服务注册，提供注册服务。服务启动后，可以提供自己的服务地址注册到Eureka，暴露出来提供给其他人调用（服务可用性相关）
 
-SpringCloud-OpenFeign 服务代理，提供代理调用服务。A服务要调用B服务，可以通过feign，feign是服务调用更方便（远程服务调用相关，有断路器，防止服务雪崩）
+SpringCloud-OpenFeign 服务代理，提供代理调用服务。A服务要调用B服务，可以通过feign，feign使服务调用更方便（远程服务调用相关，有断路器，防止服务雪崩）
 
 SpringCloud-Gateway 网关路由服务，提供代理访问转发。 访问narule.net/api 实际访问narule.github.io/api 可以通过Gateway来实现。（访问安全相关）
 
@@ -50,7 +50,7 @@ SpringCloud-Gateway 网关路由服务，提供代理访问转发。 访问narul
 
 example 代码地址：[springcloud-example](https://github.com/narule/springcloud-example)
 
-如果要其中里面的服务，请务必先启动config-server，因为里面的项目都是通过config统一配置，设置服务的端口等参数
+完整代码请参考[springcloud-example](https://github.com/narule/springcloud-example)，以及maven的完整依赖；如果要启动里面的服务，请务必先启动config-server，因为里面的项目都是通过config统一配置，包括服务用哪个端口访问等参数，；
 
 ## Config
 
@@ -65,6 +65,8 @@ Config作为配置中心，能够很方便配置每个分布式系统参数，�
 
 
 关键配置是application.yml中配置文件的位置，一般由url指定
+
+
 
 #### dependencies 依赖 
 
@@ -124,9 +126,13 @@ public class ConfigServerApplication {
 
 ### 配置读取规则
 
+下文中所有应用程序的配置（包括端口）都是读取的 https://github.com/narule/spring-cloud-config 
+
 如果启动程序 spring.application.name=server1-client，并且配置了远程配置，此程序会尝试从远程读取server1-client.yml 文件的配置参数，这是springcloud-config配置规则
 
 客户端应用读取配置只需要依赖`spring-cloud-starter-config`  ，不需要在启动类中写什么注解
+
+
 
 #### client-dependencies 
 
@@ -141,7 +147,7 @@ public class ConfigServerApplication {
 
 #### client-application.yml
 
-config 3.0 有新增配置
+spring-cloud-starter-config 3.0 有新增配置
 
 ```yml
 # client一般指定配置路径
@@ -157,7 +163,7 @@ spring:
       - http://localhost:8888 # config-server的访问地址
 
 
-# 3.0之后指定 指定url方式
+# 3.0之后新的方式 指定url
 spring:
   application:
     name: config-client-one
@@ -166,7 +172,25 @@ spring:
      - optional:configserver:http://narule.net:8888 #config-server的访问地址
 ```
 
-#### 
+#### ConfigClientOneApplication
+
+```java
+package net.narule.spring.cloud.config.client;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class ConfigClientOneApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(ConfigClientOneApplication.class, args);
+	}
+
+}
+```
+
+
 
 ## Eureka
 
@@ -208,30 +232,24 @@ Eureka提供服务注册，分为注册中心和客户端，注册中心使用@E
 #### server-application.yml
 
 ```yml
+server:
+  port: 1999
+spring:
+  application:
+    name: eureka-server #注册中心访问path
 eureka:
   dashboard:
-    path: eureka-server  #注册中心访问path
+    path: eureka-server
   instance:
     hostname: localhost
   client:
     registerWithEureka: false #将自己注册微eurekaclient false
     fetchRegistry: false
     serviceUrl:
-      defaultZone: http://${spring.security.user.name}:${spring.security.user.password}@${eureka.instance.hostname}:${server.port}/eureka/  #注册节点地址
+      defaultZone: http://${eureka.instance.hostname}:${server.port}/eureka/ #注册节点地址
   server:
     enable-self-preservation: false
-    eviction-interval-timer-in-ms: 10000 
-server:
-  port: 1999
-spring:
-  application:
-    name: eureka-server
-    
-  # 安全认证的配置 - 为了 eureka-server 查看和注册添加权限 可选配置
-  security: 
-    user:
-      name: eureka  # 用户名
-      password: dsp   # 用户密码
+    eviction-interval-timer-in-ms: 10000 #服务刷新时间
 ```
 
 
@@ -278,22 +296,21 @@ public class EurekaServerApplication {
 配置文件主要是指定注册中心地址，通过这个配置客户端可以把自己的服务注册到注册中心，或者从注册中心获取其他服务的信息，
 
 ```yml
-server:
-  port: 8080
-#Eureka实例名，集群中根据这里相互识别
 spring:
   application:
-    name: lock-redis
-
+    name: eureka-client
+## 下面的配置是通过config-server读取，如果没有配置中心，则需要在本地配置文件中写好    
+server:
+  port: 18080
 eureka:
 #客户端
   client:
 #注册中心地址
     service-url:
-      defaultZone: http://eureka:dsp@13.228.36.167:1999/eureka/
+      defaultZone: http://localhost:1999/eureka/  #这里是
       
   instance:
-    instanceId: ${spring.application.name}:${vcap.application.instance_id:${spring.application.instance_id:${random.value}}} # 实例id命名规则，这个用于区分同一服务在不同的机器，可应用于分布式锁
+    instanceId: ${spring.application.name}:${vcap.application.instance_id:${spring.application.instance_id:${random.value}}}# 实例id命名规则，这个用于区分同一服务在不同的机器，可应用于分布式锁
     prefer-ip-address: true #以IP地址注册到服务中心，相互注册使用IP地址
     hostname: localhost
 ```
@@ -305,19 +322,31 @@ eureka:
 客户端的使用是注解@EnableEurekaClient，有这个注解，启动时会把自己的信息注册到服务中心，当然要配置注册中心节点信息，让客户端知道注册地址在哪。
 
 ```java
-package com.domoment.eureka.client;
+package net.narule.spring.cloud.eureka.client;
+
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.netflix.eureka.EnableEurekaClient;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @SpringBootApplication
 @EnableEurekaClient
+@RestController
 public class EurekaClientApplication {
+
 	public static void main(String[] args) {
 		SpringApplication.run(EurekaClientApplication.class, args);
 	}
+
+	@RequestMapping("/request-eureka-client/{id}")
+	public ResponseResult requestEurekaClient(@PathVariable String id) {
+		return ResponseResult.ok(id + "from-eureka-client");
+	}
 }
+
 ```
 
 
