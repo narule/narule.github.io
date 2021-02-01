@@ -48,7 +48,9 @@ SpringCloud-Gateway 网关路由服务，提供代理访问转发。 访问narul
 
 还有很多其他组件，比如redis相关组件用于数据一致性访问，kafka用于高吞吐消息队列等，本文主要讲上面提到的四个，通过代码简单说明如何使用。
 
-example 代码地址：[springcloud-example](https://github.com/narule/springcloud-example)
+### 参考代码
+
+**example 代码地址：**[springcloud-example](https://github.com/narule/springcloud-example)
 
 完整代码请参考[springcloud-example](https://github.com/narule/springcloud-example)，以及maven的完整依赖；如果要启动里面的服务，请务必先启动config-server，因为里面的项目都是通过config统一配置，包括服务用哪个端口访问等参数，；
 
