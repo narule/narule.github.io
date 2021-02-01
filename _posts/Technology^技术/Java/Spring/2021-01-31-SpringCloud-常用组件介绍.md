@@ -388,7 +388,7 @@ Feign和eureka一样是Nexflix的组件，可以用作接口调用Eureka服务�
 
 #### FeignClientApplication
 
-要使用feign功能，启动类需要使用注解@EnableFeignClients @EnableDiscoveryClient
+要使用feign功能，启动类需要使用注解@EnableFeignClients
 
 ```java
 package net.narule.spring.cloud.feign.client;
