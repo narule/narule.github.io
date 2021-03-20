@@ -3,7 +3,7 @@ title: AbstractQueueSyncroniser抽象类-阻塞锁
 author: Narule
 date: 2021-03-20 00:10:00 +0800
 categories: [Technology^技术, Java]
-tags: [writing, Java，AbstractQueueSyncroniser]
+tags: [writing, Java, AbstractQueueSyncroniser]
 ---
 
 
