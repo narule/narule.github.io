@@ -24,5 +24,6 @@ order: 4
 
 narule@163.com
 
-cnblogs: www.cnblogs.com/narule
+博客园: <a href="www.cnblogs.com/narule" target="_blank">www.cnblogs.com/narule</a>
 
+<a href="http://www.narule.net/blog" target="_blank">narule.net/blog</a>
