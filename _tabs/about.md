@@ -21,9 +21,9 @@ narule@163.com
 
 博客园: <a href="http://www.cnblogs.com/narule">www.cnblogs.com/narule</a> 写博客从这里开始
 
-同步笔记: <a href="http://www.narule.net/blog">narule.net/blog</a>
+ 同步笔记: <a href="www.cnblogs.com/narule">www.cnblogs.com/narule</a>
 
-网络备忘录: <a href="http://www.narule.net" target="_blank">narule.net</a>  一个提供备忘的小服务，去中心化加密设计，使备忘信息安全
+网络备忘录: <a href="http://miji.sntree.cn" target="_blank">miji.sntree.cn</a>  一个提供备忘的小服务，去中心化加密设计，使备忘信息安全
 
 
 
