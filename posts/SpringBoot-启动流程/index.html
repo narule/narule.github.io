@@ -1,0 +1,682 @@
+<!DOCTYPE html><html lang="en" ><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no"><meta name="theme" content="Chirpy v2.7.2"><meta name="generator" content="Jekyll v4.2.0" /><meta property="og:title" content="SpringBoot-启动流程" /><meta name="author" content="Narule" /><meta property="og:locale" content="en_US" /><meta name="description" content="SpringBoot-启动流程 平时开发springboot项目的时候，一个SpringBootApplication注解加一个main方法就可以启动服务器运行起来（默认tomcat），看了下源码，这里讲下认为主要的流程 主要流程如下 0.启动main方法开始 1.初始化配置：通过类加载器，（loadFactories）读取classpath下所有的spring.factories配置文件，创建一些初始配置对象；通知监听者应用程序启动开始，创建环境对象environment，用于读取环境配置 如 application.yml 2.创建应用程序上下文-createApplicationContext，创建 bean工厂对象 3.刷新上下文（启动核心） 3.1 配置工厂对象，包括上下文类加载器，对象发布处理器，beanFactoryPostProcessor 3.2 注册并实例化bean工厂发布处理器，并且调用这些处理器，对包扫描解析(主要是class文件) 3.3 注册并实例化bean发布处理器 beanPostProcessor 3.4 初始化一些与上下文有特别关系的bean对象（创建tomcat服务器） 3.5 实例化所有bean工厂缓存的bean对象（剩下的） 3.6 发布通知-通知上下文刷新完成（启动tomcat服务器） 4.通知监听者-启动程序完成 启动中，大部分对象都是BeanFactory对象通过反射创建 SpringBoot的启动解析代码过多，下文是整体流程的部分主要代码 启动 启动程序： 1 2 3 4 5 6 7 8 9 10 11 import org.springframework.boot.SpringApplication;//启动类 import org.springframework.boot.autoconfigure.SpringBootApplication; @SpringBootApplication //启动必要注解 public class YourApplication { //运行main方法启动springboot public static void main(String[] args) { SpringApplication.run(YourApplication.class, args);//启动类静态run方法 } } 启动类 org.springframework.boot.SpringApplication 包含主流程方法 启动类在运行静态run方法的时候，是先创建一个SpringApplication对象，再运行对象的run方法，工厂初始配置在构造函数中完成，run方法定义运行总体流程 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 // 静态方法 org.springframework.boot.SpringApplication.run(Class&lt;?&gt;[], String[]) public static ConfigurableApplicationContext run(Class&lt;?&gt;[] primarySources, String[] args) { return new SpringApplication(primarySources).run(args); } // 构造方法 public SpringApplication(ResourceLoader resourceLoader, Class&lt;?&gt;... primarySources) { //.......... //// 1.(loadFactories)读取classpath下所有的spring.factories配置文件 //// // 配置应用程序启动前的初始化对象 setInitializers((Collection) getSpringFactoriesInstances(ApplicationContextInitializer.class)); // 配置应用程序启动前的监听器 setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class)); this.mainApplicationClass = deduceMainApplicationClass(); } // 对象run方法 开始启动程序 public ConfigurableApplicationContext run(String... args) { //...... // 通知监听者启动开始 listeners.starting(); try { // 创建应用程序环境 配置文件在此处读取(application.properties application.yml) ConfigurableEnvironment environment = prepareEnvironment(listeners, applicationArguments); //// 2.创建应用程序上下文...此处创建了beanfactory //// context = createApplicationContext(); //// 3.刷新上下文（spring启动核心） //// refreshContext(context); //// 4.启动完成通知...... //// listeners.started(context); } catch (Throwable ex) { handleRunFailure(context, ex, exceptionReporters, listeners); throw new IllegalStateException(ex); } try { listeners.running(context); } catch (Throwable ex) { handleRunFailure(context, ex, exceptionReporters, null); throw new IllegalStateException(ex); } return context; } 初始化配置 springboot启动应用程序之前，会创建一些初始化对象和监听器 这个操作在构造方法中完成，根据配置文件，创建ApplicationContextInitializer.class,ApplicationListener.class两个接口的实现类，至于具体创建那些类对象，根据下面的方法逻辑去做 org.springframework.boot.SpringApplication.getSpringFactoriesInstances() -&gt; org.springframework.core.io.support.SpringFactoriesLoader.loadFactoryNames() -&gt; org.springframework.core.io.support.SpringFactoriesLoader.loadSpringFactories()-&gt; createSpringFactoriesInstances() 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 //构造方法中的初始化对象创建 setInitializers((Collection) getSpringFactoriesInstances(ApplicationContextInitializer.class)); setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class)); //看一下getSpringFactoriesInstances方法 private &lt;T&gt; Collection&lt;T&gt; getSpringFactoriesInstances(Class&lt;T&gt; type) { return getSpringFactoriesInstances(type, new Class&lt;?&gt;[] {}); } private &lt;T&gt; Collection&lt;T&gt; getSpringFactoriesInstances(Class&lt;T&gt; type, Class&lt;?&gt;[] parameterTypes, Object... args) { ClassLoader classLoader = getClassLoader(); // 获取初始化类的类名 Set&lt;String&gt; names = new LinkedHashSet&lt;&gt;(SpringFactoriesLoader.loadFactoryNames(type, classLoader)); // 通过这些类名实例化对象 List&lt;T&gt; instances = createSpringFactoriesInstances(type, parameterTypes, classLoader, args, names); AnnotationAwareOrderComparator.sort(instances); return instances; } // 读取配置方法 // 更详深层的代码在org.springframework.core.io.support.SpringFactoriesLoader.loadSpringFactories(ClassLoader) public static List&lt;String&gt; loadFactoryNames(Class&lt;?&gt; factoryType, @Nullable ClassLoader classLoader) { String factoryTypeName = factoryType.getName(); return loadSpringFactories(classLoader).getOrDefault(factoryTypeName, Collections.emptyList()); } // loadSpringFactories(classLoader)读取运行环境中所有META-INF/spring.factories配置 通过上面的方法， spring-boot-2.2.8.RELEASE.jar/META-INF/spring.factories的文件中是这样， # Application Context Initializers org.springframework.context.ApplicationContextInitializer=\ org.springframework.boot.context.ConfigurationWarningsApplicationContextInitializer,\ org.springframework.boot.context.ContextIdApplicationContextInitializer,\ org.springframework.boot.context.config.DelegatingApplicationContextInitializer,\ org.springframework.boot.rsocket.context.RSocketPortInfoApplicationContextInitializer,\ org.springframework.boot.web.context.ServerPortInfoApplicationContextInitializer 如果只读取这一个文件，loadFactoryNames(ApplicationContextInitializer.class,classLoader)读取返回的就是下面的数组: 1 2 3 4 5 [org.springframework.context.ApplicationContextInitializer, org.springframework.boot.context.ConfigurationWarningsApplicationContextInitializer, org.springframework.boot.context.ContextIdApplicationContextInitializer, org.springframework.boot.context.config.DelegatingApplicationContextInitializer, org.springframework.boot.web.context.ServerPortInfoApplicationContextInitializer] 通过 Class.forName(className)获取这些类的Class，最后反射newInstance创建这些对象 创建好这些对象后，启动监听器 1 listeners.starting(); // 这里也是一些调用操作 读取application配置 监听器启动之后，会读取application.properties 或者 application.yml文件 1 ConfigurableEnvironment environment = prepareEnvironment(listeners, applicationArguments); //此处application.properties配置文件会被读取 创建应用上下文 初始化和配置好后，开始创建应用程序上下文，createApplicationContext ，关键的工厂BeanFactory就是此处创建，具体逻辑如下 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 // 创建应用程序上下文 context = createApplicationContext(); protected ConfigurableApplicationContext createApplicationContext() { // 上下文创建的判断逻辑 Class&lt;?&gt; contextClass = this.applicationContextClass; if (contextClass == null) { try { switch (this.webApplicationType) { case SERVLET: contextClass = Class.forName(DEFAULT_SERVLET_WEB_CONTEXT_CLASS); break; case REACTIVE: contextClass = Class.forName(DEFAULT_REACTIVE_WEB_CONTEXT_CLASS); break; default: contextClass = Class.forName(DEFAULT_CONTEXT_CLASS); } } catch (ClassNotFoundException ex) { throw new IllegalStateException( &quot;Unable create a default ApplicationContext, please specify an ApplicationContextClass&quot;, ex); } } return (ConfigurableApplicationContext) BeanUtils.instantiateClass(contextClass); } public static final String DEFAULT_SERVLET_WEB_CONTEXT_CLASS = &quot;org.springframework.boot.&quot; + &quot;web.servlet.context.AnnotationConfigServletWebServerApplicationContext&quot;; // 默认是创建这个类 这里通过this.webApplicationType判断创建具体的应用上下文，也是反射创建对象，默认创建的是org.springframework.boot.web.servlet.context.AnnotationConfigServletWebServerApplicationContext对象，看一下这个类的基本信息 1 2 3 4 5 6 7 8 9 public class AnnotationConfigServletWebServerApplicationContext extends ServletWebServerApplicationContext implements AnnotationConfigRegistry { // 构造方法 public AnnotationConfigServletWebServerApplicationContext() { this.reader = new AnnotatedBeanDefinitionReader(this); this.scanner = new ClassPathBeanDefinitionScanner(this); } } 创建工厂对象 此类继承了很多类，其中一个父类是org.springframework.context.support.GenericApplicationContext jvm机制，创建对象的时候，先运行父类的构造方法，所以创建了beanFactory 1 2 3 4 // 超级父类 GenericApplicationContext的构造方法 public GenericApplicationContext() { this.beanFactory = new DefaultListableBeanFactory();//创建工厂对象 } 刷新应用上下文 创建好上下文之后，开始刷新上下文，这里做了很多 工厂配置，bean处理器配置，类的扫描，解析，bean定义，bean类信息缓存，服务器创建，bean实例化，动态代理对象的创建等， spring中注册bean信息和实例化bean是两件事情。 注册bean信息不是创建bean对象，是解析bean类获取详细信息，会创建BeanDefinition对象，携带bean类的字节码和方法等信息，把BeanDefinition对象注册保存到工厂BeanDefinitionMap中。 工厂实例化bean时直接BeanDefinitionMap.get(beanName) 获取bean的字节码信息，通过反射创建对象，然后将bean对象保存到singletonObjects中。 1 refreshContext(context); //刷新上下文 默认实际对应的是org.springframework.context.support.AbstractApplicationContext类的refresh()方法 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 @Override public void refresh() throws BeansException, IllegalStateException { synchronized (this.startupShutdownMonitor) { //...... // 3.1配置工厂对象 prepareBeanFactory(beanFactory); try { postProcessBeanFactory(beanFactory); // 3.2注册并实例化bean工厂处理器,并调用他们 invokeBeanFactoryPostProcessors(beanFactory); // 3.3注册并实例化bean处理器 registerBeanPostProcessors(beanFactory); // 3.4 初始化一些与上下文有特别关系的bean对象（创建tomcat） onRefresh(); // 3.5 实例化所有bean工厂缓存的bean对象（剩下的）. finishBeanFactoryInitialization(beanFactory); // 3.6 发布通知-通知上下文刷新完成（包括启动tomcat） finishRefresh(); } catch (BeansException ex) {// ......Propagate exception to caller. throw ex; } finally {// ...... resetCommonCaches(); } } } 配置工厂对象，包括上下文类加载器，bean工厂发布处理器 工厂创建好后，首先配置的是类加载器，然后是一些对象发布处理器（拦截器） 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 //// 3.1配置工厂对象 prepareBeanFactory(beanFactory); protected void prepareBeanFactory(ConfigurableListableBeanFactory beanFactory) { // 设置类加载器 beanFactory.setBeanClassLoader(getClassLoader()); beanFactory.setBeanExpressionResolver(new StandardBeanExpressionResolver(beanFactory.getBeanClassLoader())); beanFactory.addPropertyEditorRegistrar(new ResourceEditorRegistrar(this, getEnvironment())); // 添加BeanPostProcessor beanFactory.addBeanPostProcessor(new ApplicationContextAwareProcessor(this)); beanFactory.ignoreDependencyInterface(EnvironmentAware.class); beanFactory.ignoreDependencyInterface(EmbeddedValueResolverAware.class); // ...... } } 注册并实例化bean工厂发布处理器,并调用他们 过程主要是工厂发布处理器的创建和调用，逻辑较多 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 //// 3.2注册并实例化bean工厂处理器,并调用他们 invokeBeanFactoryPostProcessors(beanFactory); protected void invokeBeanFactoryPostProcessors(ConfigurableListableBeanFactory beanFactory) { PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors(beanFactory, getBeanFactoryPostProcessors()); // ...... } // PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors public static void invokeBeanFactoryPostProcessors( ConfigurableListableBeanFactory beanFactory, List&lt;BeanFactoryPostProcessor&gt; beanFactoryPostProcessors) { postProcessorNames = beanFactory.getBeanNamesForType(BeanDefinitionRegistryPostProcessor.class, true, false); for (String ppName : postProcessorNames) { if (!processedBeans.contains(ppName) &amp;&amp; beanFactory.isTypeMatch(ppName, Ordered.class)) { // 创建BeanDefinitionRegistryPostProcessor处理器 currentRegistryProcessors.add(beanFactory.getBean(ppName, BeanDefinitionRegistryPostProcessor.class)); processedBeans.add(ppName); } } // 调用这些处理器 invokeBeanDefinitionRegistryPostProcessors(currentRegistryProcessors, registry); // ... } // 循环调用 private static void invokeBeanDefinitionRegistryPostProcessors( Collection&lt;? extends BeanDefinitionRegistryPostProcessor&gt; postProcessors, BeanDefinitionRegistry registry) { for (BeanDefinitionRegistryPostProcessor postProcessor : postProcessors) { postProcessor.postProcessBeanDefinitionRegistry(registry); } } BeanDefinitionRegistryPostProcessor的子类对象在此处创建并调postProcessBeanDefinitionRegistry方法。 其中org.springframework.context.annotation.ConfigurationClassPostProcessor就是BeanDefinitionRegistryPostProcessor的子类，是一个spring的类解析器，扫描包下所有的类，解析出bean类，注册到bean工厂由此类主要参与，其中有不少递归 注册并实例化bean发布处理器 1 2 //// 3.3注册并实例化bean处理器 registerBeanPostProcessors(beanFactory); BeanFactoryPostProcessors 和 BeanPostProcessors是有区别的 BeanFactoryPostProcessors 是工厂发布处理器，定义什么是bean，知道哪些是bean类，解析class文件，包括注解解析，成员对象依赖解析等；BeanPostProcessors主要在BeanFactoryPostProcessors调用完之后工作 一般在bean对像的创建之前或之后，BeanFactory调用这些bean处理器拦截处理，Spring代理对象的创建也是通过beanPostProcessor处理器来实现 bean发布处理器生产AOP代理对象 AnnotationAwareAspectJAutoProxyCreator实现了BeanPostProcessors，在bean被工厂创建之后，BeanFactory调用拦截器的postProcessAfterInitialization做拦截处理。此拦截器处理器实际执行的是父类org.springframework.aop.framework.autoproxy.AbstractAutoProxyCreator的方法 比如一个UserServiceImp类有@service注解，并且有切点Aspectj注解增强方法，bean工厂创建userServiceImp后，代理拦截器检测到AOP相关注解，会创建动态代理对象userServiceImp$$EnhancerBySpringCGLIB并返代理对象，而不是返回userServiceImp Spring工厂部分bean创建拦截代码逻辑 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 // org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.initializeBean(String, Object, RootBeanDefinition) // bean初始化 protected Object initializeBean(String beanName, Object bean, @Nullable RootBeanDefinition mbd) { invokeAwareMethods(beanName, bean); Object wrappedBean = bean; if (mbd == null || !mbd.isSynthetic()) { // 初始化之前，拦截 wrappedBean = applyBeanPostProcessorsBeforeInitialization(wrappedBean, beanName); } invokeInitMethods(beanName, wrappedBean, mbd); if (mbd == null || !mbd.isSynthetic()) { // 初始化之后拦截 wrappedBean = applyBeanPostProcessorsAfterInitialization(wrappedBean, beanName); } return wrappedBean; } @Override public Object applyBeanPostProcessorsAfterInitialization(Object existingBean, String beanName) throws BeansException { Object result = existingBean; for (BeanPostProcessor processor : getBeanPostProcessors()) { // 循环bean发布处理器调用postProcessAfterInitialization方法 Object current = processor.postProcessAfterInitialization(result, beanName); if (current == null) { return result; } result = current; } return result; } AbstractAutoProxyCreator在此循环中被调用，比如在userServiceImp服务类上有事务注解@Transactional，一般就会被拦截生成代理对象，添加额外的处理事务的功能代码，返回增强的代理对象 初始化一些与上下文有特别关系的bean对象 默认tomcat服务器的创建就是此方法完成，此处定义特别的bean创建，一般是服务器有关或个性化对象， 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 //// 3.4 初始化一些与上下文有特别关系的bean对象 onRefresh(); // org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext // 子类context重写 @Override protected void onRefresh() { super.onRefresh(); try { createWebServer(); //创建服务器 } catch (Throwable ex) { throw new ApplicationContextException(&quot;Unable to start web server&quot;, ex); } } private void createWebServer() { WebServer webServer = this.webServer; ServletContext servletContext = getServletContext(); if (webServer == null &amp;&amp; servletContext == null) { ServletWebServerFactory factory = getWebServerFactory(); this.webServer = factory.getWebServer(getSelfInitializer()); // 默认创建tomcat服务器 // org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory.getWebServer() } // ...... initPropertySources(); } 实例化所有bean工厂缓存的bean对象 服务器启动后，创建spring工厂里面缓存的bean信息（没有被创建的单例） 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 //// 3.5 实例化所有bean工厂缓存的bean对象（剩下的）. finishBeanFactoryInitialization(beanFactory); protected void finishBeanFactoryInitialization(ConfigurableListableBeanFactory beanFactory) { // ...... // Instantiate all remaining (non-lazy-init) singletons. beanFactory.preInstantiateSingletons(); } // 子类org.springframework.beans.factory.support.DefaultListableBeanFactory实现方法，完成剩下的单例bean对象创建 @Override public void preInstantiateSingletons() throws BeansException { List&lt;String&gt; beanNames = new ArrayList&lt;&gt;(this.beanDefinitionNames); for (String beanName : beanNames) { RootBeanDefinition bd = getMergedLocalBeanDefinition(beanName); if (!bd.isAbstract() &amp;&amp; bd.isSingleton() &amp;&amp; !bd.isLazyInit()) { getBean(beanName); //创建还没有实例化的bean对象 } } } 发布通知-通知上下文刷新完成 上下文初始化完成之后，启动tomcat服务器 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 finishRefresh(); // super.finishRefresh protected void finishRefresh() { // ...... 发布刷行完成事件 // Publish the final event. publishEvent(new ContextRefreshedEvent(this)); } // org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext.finishRefresh() @Override protected void finishRefresh() { super.finishRefresh(); WebServer webServer = startWebServer();// 启动服务器 if (webServer != null) { publishEvent(new ServletWebServerInitializedEvent(webServer, this)); } } 通知监听者-启动程序完成 发布通知监听器启动完成，监听器会根据事件类型做个性化操作 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 listeners.started(context); listeners.running(context); void started(ConfigurableApplicationContext context) { for (SpringApplicationRunListener listener : this.listeners) { listener.started(context); } } void running(ConfigurableApplicationContext context) { for (SpringApplicationRunListener listener : this.listeners) { listener.running(context); } } @Override public void started(ConfigurableApplicationContext context) { context.publishEvent(new ApplicationStartedEvent(this.application, this.args, context)); } @Override public void running(ConfigurableApplicationContext context) { context.publishEvent(new ApplicationReadyEvent(this.application, this.args, context)); } 不定期更新…" /><meta property="og:description" content="SpringBoot-启动流程 平时开发springboot项目的时候，一个SpringBootApplication注解加一个main方法就可以启动服务器运行起来（默认tomcat），看了下源码，这里讲下认为主要的流程 主要流程如下 0.启动main方法开始 1.初始化配置：通过类加载器，（loadFactories）读取classpath下所有的spring.factories配置文件，创建一些初始配置对象；通知监听者应用程序启动开始，创建环境对象environment，用于读取环境配置 如 application.yml 2.创建应用程序上下文-createApplicationContext，创建 bean工厂对象 3.刷新上下文（启动核心） 3.1 配置工厂对象，包括上下文类加载器，对象发布处理器，beanFactoryPostProcessor 3.2 注册并实例化bean工厂发布处理器，并且调用这些处理器，对包扫描解析(主要是class文件) 3.3 注册并实例化bean发布处理器 beanPostProcessor 3.4 初始化一些与上下文有特别关系的bean对象（创建tomcat服务器） 3.5 实例化所有bean工厂缓存的bean对象（剩下的） 3.6 发布通知-通知上下文刷新完成（启动tomcat服务器） 4.通知监听者-启动程序完成 启动中，大部分对象都是BeanFactory对象通过反射创建 SpringBoot的启动解析代码过多，下文是整体流程的部分主要代码 启动 启动程序： 1 2 3 4 5 6 7 8 9 10 11 import org.springframework.boot.SpringApplication;//启动类 import org.springframework.boot.autoconfigure.SpringBootApplication; @SpringBootApplication //启动必要注解 public class YourApplication { //运行main方法启动springboot public static void main(String[] args) { SpringApplication.run(YourApplication.class, args);//启动类静态run方法 } } 启动类 org.springframework.boot.SpringApplication 包含主流程方法 启动类在运行静态run方法的时候，是先创建一个SpringApplication对象，再运行对象的run方法，工厂初始配置在构造函数中完成，run方法定义运行总体流程 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 // 静态方法 org.springframework.boot.SpringApplication.run(Class&lt;?&gt;[], String[]) public static ConfigurableApplicationContext run(Class&lt;?&gt;[] primarySources, String[] args) { return new SpringApplication(primarySources).run(args); } // 构造方法 public SpringApplication(ResourceLoader resourceLoader, Class&lt;?&gt;... primarySources) { //.......... //// 1.(loadFactories)读取classpath下所有的spring.factories配置文件 //// // 配置应用程序启动前的初始化对象 setInitializers((Collection) getSpringFactoriesInstances(ApplicationContextInitializer.class)); // 配置应用程序启动前的监听器 setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class)); this.mainApplicationClass = deduceMainApplicationClass(); } // 对象run方法 开始启动程序 public ConfigurableApplicationContext run(String... args) { //...... // 通知监听者启动开始 listeners.starting(); try { // 创建应用程序环境 配置文件在此处读取(application.properties application.yml) ConfigurableEnvironment environment = prepareEnvironment(listeners, applicationArguments); //// 2.创建应用程序上下文...此处创建了beanfactory //// context = createApplicationContext(); //// 3.刷新上下文（spring启动核心） //// refreshContext(context); //// 4.启动完成通知...... //// listeners.started(context); } catch (Throwable ex) { handleRunFailure(context, ex, exceptionReporters, listeners); throw new IllegalStateException(ex); } try { listeners.running(context); } catch (Throwable ex) { handleRunFailure(context, ex, exceptionReporters, null); throw new IllegalStateException(ex); } return context; } 初始化配置 springboot启动应用程序之前，会创建一些初始化对象和监听器 这个操作在构造方法中完成，根据配置文件，创建ApplicationContextInitializer.class,ApplicationListener.class两个接口的实现类，至于具体创建那些类对象，根据下面的方法逻辑去做 org.springframework.boot.SpringApplication.getSpringFactoriesInstances() -&gt; org.springframework.core.io.support.SpringFactoriesLoader.loadFactoryNames() -&gt; org.springframework.core.io.support.SpringFactoriesLoader.loadSpringFactories()-&gt; createSpringFactoriesInstances() 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 //构造方法中的初始化对象创建 setInitializers((Collection) getSpringFactoriesInstances(ApplicationContextInitializer.class)); setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class)); //看一下getSpringFactoriesInstances方法 private &lt;T&gt; Collection&lt;T&gt; getSpringFactoriesInstances(Class&lt;T&gt; type) { return getSpringFactoriesInstances(type, new Class&lt;?&gt;[] {}); } private &lt;T&gt; Collection&lt;T&gt; getSpringFactoriesInstances(Class&lt;T&gt; type, Class&lt;?&gt;[] parameterTypes, Object... args) { ClassLoader classLoader = getClassLoader(); // 获取初始化类的类名 Set&lt;String&gt; names = new LinkedHashSet&lt;&gt;(SpringFactoriesLoader.loadFactoryNames(type, classLoader)); // 通过这些类名实例化对象 List&lt;T&gt; instances = createSpringFactoriesInstances(type, parameterTypes, classLoader, args, names); AnnotationAwareOrderComparator.sort(instances); return instances; } // 读取配置方法 // 更详深层的代码在org.springframework.core.io.support.SpringFactoriesLoader.loadSpringFactories(ClassLoader) public static List&lt;String&gt; loadFactoryNames(Class&lt;?&gt; factoryType, @Nullable ClassLoader classLoader) { String factoryTypeName = factoryType.getName(); return loadSpringFactories(classLoader).getOrDefault(factoryTypeName, Collections.emptyList()); } // loadSpringFactories(classLoader)读取运行环境中所有META-INF/spring.factories配置 通过上面的方法， spring-boot-2.2.8.RELEASE.jar/META-INF/spring.factories的文件中是这样， # Application Context Initializers org.springframework.context.ApplicationContextInitializer=\ org.springframework.boot.context.ConfigurationWarningsApplicationContextInitializer,\ org.springframework.boot.context.ContextIdApplicationContextInitializer,\ org.springframework.boot.context.config.DelegatingApplicationContextInitializer,\ org.springframework.boot.rsocket.context.RSocketPortInfoApplicationContextInitializer,\ org.springframework.boot.web.context.ServerPortInfoApplicationContextInitializer 如果只读取这一个文件，loadFactoryNames(ApplicationContextInitializer.class,classLoader)读取返回的就是下面的数组: 1 2 3 4 5 [org.springframework.context.ApplicationContextInitializer, org.springframework.boot.context.ConfigurationWarningsApplicationContextInitializer, org.springframework.boot.context.ContextIdApplicationContextInitializer, org.springframework.boot.context.config.DelegatingApplicationContextInitializer, org.springframework.boot.web.context.ServerPortInfoApplicationContextInitializer] 通过 Class.forName(className)获取这些类的Class，最后反射newInstance创建这些对象 创建好这些对象后，启动监听器 1 listeners.starting(); // 这里也是一些调用操作 读取application配置 监听器启动之后，会读取application.properties 或者 application.yml文件 1 ConfigurableEnvironment environment = prepareEnvironment(listeners, applicationArguments); //此处application.properties配置文件会被读取 创建应用上下文 初始化和配置好后，开始创建应用程序上下文，createApplicationContext ，关键的工厂BeanFactory就是此处创建，具体逻辑如下 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 // 创建应用程序上下文 context = createApplicationContext(); protected ConfigurableApplicationContext createApplicationContext() { // 上下文创建的判断逻辑 Class&lt;?&gt; contextClass = this.applicationContextClass; if (contextClass == null) { try { switch (this.webApplicationType) { case SERVLET: contextClass = Class.forName(DEFAULT_SERVLET_WEB_CONTEXT_CLASS); break; case REACTIVE: contextClass = Class.forName(DEFAULT_REACTIVE_WEB_CONTEXT_CLASS); break; default: contextClass = Class.forName(DEFAULT_CONTEXT_CLASS); } } catch (ClassNotFoundException ex) { throw new IllegalStateException( &quot;Unable create a default ApplicationContext, please specify an ApplicationContextClass&quot;, ex); } } return (ConfigurableApplicationContext) BeanUtils.instantiateClass(contextClass); } public static final String DEFAULT_SERVLET_WEB_CONTEXT_CLASS = &quot;org.springframework.boot.&quot; + &quot;web.servlet.context.AnnotationConfigServletWebServerApplicationContext&quot;; // 默认是创建这个类 这里通过this.webApplicationType判断创建具体的应用上下文，也是反射创建对象，默认创建的是org.springframework.boot.web.servlet.context.AnnotationConfigServletWebServerApplicationContext对象，看一下这个类的基本信息 1 2 3 4 5 6 7 8 9 public class AnnotationConfigServletWebServerApplicationContext extends ServletWebServerApplicationContext implements AnnotationConfigRegistry { // 构造方法 public AnnotationConfigServletWebServerApplicationContext() { this.reader = new AnnotatedBeanDefinitionReader(this); this.scanner = new ClassPathBeanDefinitionScanner(this); } } 创建工厂对象 此类继承了很多类，其中一个父类是org.springframework.context.support.GenericApplicationContext jvm机制，创建对象的时候，先运行父类的构造方法，所以创建了beanFactory 1 2 3 4 // 超级父类 GenericApplicationContext的构造方法 public GenericApplicationContext() { this.beanFactory = new DefaultListableBeanFactory();//创建工厂对象 } 刷新应用上下文 创建好上下文之后，开始刷新上下文，这里做了很多 工厂配置，bean处理器配置，类的扫描，解析，bean定义，bean类信息缓存，服务器创建，bean实例化，动态代理对象的创建等， spring中注册bean信息和实例化bean是两件事情。 注册bean信息不是创建bean对象，是解析bean类获取详细信息，会创建BeanDefinition对象，携带bean类的字节码和方法等信息，把BeanDefinition对象注册保存到工厂BeanDefinitionMap中。 工厂实例化bean时直接BeanDefinitionMap.get(beanName) 获取bean的字节码信息，通过反射创建对象，然后将bean对象保存到singletonObjects中。 1 refreshContext(context); //刷新上下文 默认实际对应的是org.springframework.context.support.AbstractApplicationContext类的refresh()方法 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 @Override public void refresh() throws BeansException, IllegalStateException { synchronized (this.startupShutdownMonitor) { //...... // 3.1配置工厂对象 prepareBeanFactory(beanFactory); try { postProcessBeanFactory(beanFactory); // 3.2注册并实例化bean工厂处理器,并调用他们 invokeBeanFactoryPostProcessors(beanFactory); // 3.3注册并实例化bean处理器 registerBeanPostProcessors(beanFactory); // 3.4 初始化一些与上下文有特别关系的bean对象（创建tomcat） onRefresh(); // 3.5 实例化所有bean工厂缓存的bean对象（剩下的）. finishBeanFactoryInitialization(beanFactory); // 3.6 发布通知-通知上下文刷新完成（包括启动tomcat） finishRefresh(); } catch (BeansException ex) {// ......Propagate exception to caller. throw ex; } finally {// ...... resetCommonCaches(); } } } 配置工厂对象，包括上下文类加载器，bean工厂发布处理器 工厂创建好后，首先配置的是类加载器，然后是一些对象发布处理器（拦截器） 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 //// 3.1配置工厂对象 prepareBeanFactory(beanFactory); protected void prepareBeanFactory(ConfigurableListableBeanFactory beanFactory) { // 设置类加载器 beanFactory.setBeanClassLoader(getClassLoader()); beanFactory.setBeanExpressionResolver(new StandardBeanExpressionResolver(beanFactory.getBeanClassLoader())); beanFactory.addPropertyEditorRegistrar(new ResourceEditorRegistrar(this, getEnvironment())); // 添加BeanPostProcessor beanFactory.addBeanPostProcessor(new ApplicationContextAwareProcessor(this)); beanFactory.ignoreDependencyInterface(EnvironmentAware.class); beanFactory.ignoreDependencyInterface(EmbeddedValueResolverAware.class); // ...... } } 注册并实例化bean工厂发布处理器,并调用他们 过程主要是工厂发布处理器的创建和调用，逻辑较多 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 //// 3.2注册并实例化bean工厂处理器,并调用他们 invokeBeanFactoryPostProcessors(beanFactory); protected void invokeBeanFactoryPostProcessors(ConfigurableListableBeanFactory beanFactory) { PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors(beanFactory, getBeanFactoryPostProcessors()); // ...... } // PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors public static void invokeBeanFactoryPostProcessors( ConfigurableListableBeanFactory beanFactory, List&lt;BeanFactoryPostProcessor&gt; beanFactoryPostProcessors) { postProcessorNames = beanFactory.getBeanNamesForType(BeanDefinitionRegistryPostProcessor.class, true, false); for (String ppName : postProcessorNames) { if (!processedBeans.contains(ppName) &amp;&amp; beanFactory.isTypeMatch(ppName, Ordered.class)) { // 创建BeanDefinitionRegistryPostProcessor处理器 currentRegistryProcessors.add(beanFactory.getBean(ppName, BeanDefinitionRegistryPostProcessor.class)); processedBeans.add(ppName); } } // 调用这些处理器 invokeBeanDefinitionRegistryPostProcessors(currentRegistryProcessors, registry); // ... } // 循环调用 private static void invokeBeanDefinitionRegistryPostProcessors( Collection&lt;? extends BeanDefinitionRegistryPostProcessor&gt; postProcessors, BeanDefinitionRegistry registry) { for (BeanDefinitionRegistryPostProcessor postProcessor : postProcessors) { postProcessor.postProcessBeanDefinitionRegistry(registry); } } BeanDefinitionRegistryPostProcessor的子类对象在此处创建并调postProcessBeanDefinitionRegistry方法。 其中org.springframework.context.annotation.ConfigurationClassPostProcessor就是BeanDefinitionRegistryPostProcessor的子类，是一个spring的类解析器，扫描包下所有的类，解析出bean类，注册到bean工厂由此类主要参与，其中有不少递归 注册并实例化bean发布处理器 1 2 //// 3.3注册并实例化bean处理器 registerBeanPostProcessors(beanFactory); BeanFactoryPostProcessors 和 BeanPostProcessors是有区别的 BeanFactoryPostProcessors 是工厂发布处理器，定义什么是bean，知道哪些是bean类，解析class文件，包括注解解析，成员对象依赖解析等；BeanPostProcessors主要在BeanFactoryPostProcessors调用完之后工作 一般在bean对像的创建之前或之后，BeanFactory调用这些bean处理器拦截处理，Spring代理对象的创建也是通过beanPostProcessor处理器来实现 bean发布处理器生产AOP代理对象 AnnotationAwareAspectJAutoProxyCreator实现了BeanPostProcessors，在bean被工厂创建之后，BeanFactory调用拦截器的postProcessAfterInitialization做拦截处理。此拦截器处理器实际执行的是父类org.springframework.aop.framework.autoproxy.AbstractAutoProxyCreator的方法 比如一个UserServiceImp类有@service注解，并且有切点Aspectj注解增强方法，bean工厂创建userServiceImp后，代理拦截器检测到AOP相关注解，会创建动态代理对象userServiceImp$$EnhancerBySpringCGLIB并返代理对象，而不是返回userServiceImp Spring工厂部分bean创建拦截代码逻辑 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 // org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.initializeBean(String, Object, RootBeanDefinition) // bean初始化 protected Object initializeBean(String beanName, Object bean, @Nullable RootBeanDefinition mbd) { invokeAwareMethods(beanName, bean); Object wrappedBean = bean; if (mbd == null || !mbd.isSynthetic()) { // 初始化之前，拦截 wrappedBean = applyBeanPostProcessorsBeforeInitialization(wrappedBean, beanName); } invokeInitMethods(beanName, wrappedBean, mbd); if (mbd == null || !mbd.isSynthetic()) { // 初始化之后拦截 wrappedBean = applyBeanPostProcessorsAfterInitialization(wrappedBean, beanName); } return wrappedBean; } @Override public Object applyBeanPostProcessorsAfterInitialization(Object existingBean, String beanName) throws BeansException { Object result = existingBean; for (BeanPostProcessor processor : getBeanPostProcessors()) { // 循环bean发布处理器调用postProcessAfterInitialization方法 Object current = processor.postProcessAfterInitialization(result, beanName); if (current == null) { return result; } result = current; } return result; } AbstractAutoProxyCreator在此循环中被调用，比如在userServiceImp服务类上有事务注解@Transactional，一般就会被拦截生成代理对象，添加额外的处理事务的功能代码，返回增强的代理对象 初始化一些与上下文有特别关系的bean对象 默认tomcat服务器的创建就是此方法完成，此处定义特别的bean创建，一般是服务器有关或个性化对象， 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 //// 3.4 初始化一些与上下文有特别关系的bean对象 onRefresh(); // org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext // 子类context重写 @Override protected void onRefresh() { super.onRefresh(); try { createWebServer(); //创建服务器 } catch (Throwable ex) { throw new ApplicationContextException(&quot;Unable to start web server&quot;, ex); } } private void createWebServer() { WebServer webServer = this.webServer; ServletContext servletContext = getServletContext(); if (webServer == null &amp;&amp; servletContext == null) { ServletWebServerFactory factory = getWebServerFactory(); this.webServer = factory.getWebServer(getSelfInitializer()); // 默认创建tomcat服务器 // org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory.getWebServer() } // ...... initPropertySources(); } 实例化所有bean工厂缓存的bean对象 服务器启动后，创建spring工厂里面缓存的bean信息（没有被创建的单例） 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 //// 3.5 实例化所有bean工厂缓存的bean对象（剩下的）. finishBeanFactoryInitialization(beanFactory); protected void finishBeanFactoryInitialization(ConfigurableListableBeanFactory beanFactory) { // ...... // Instantiate all remaining (non-lazy-init) singletons. beanFactory.preInstantiateSingletons(); } // 子类org.springframework.beans.factory.support.DefaultListableBeanFactory实现方法，完成剩下的单例bean对象创建 @Override public void preInstantiateSingletons() throws BeansException { List&lt;String&gt; beanNames = new ArrayList&lt;&gt;(this.beanDefinitionNames); for (String beanName : beanNames) { RootBeanDefinition bd = getMergedLocalBeanDefinition(beanName); if (!bd.isAbstract() &amp;&amp; bd.isSingleton() &amp;&amp; !bd.isLazyInit()) { getBean(beanName); //创建还没有实例化的bean对象 } } } 发布通知-通知上下文刷新完成 上下文初始化完成之后，启动tomcat服务器 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 finishRefresh(); // super.finishRefresh protected void finishRefresh() { // ...... 发布刷行完成事件 // Publish the final event. publishEvent(new ContextRefreshedEvent(this)); } // org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext.finishRefresh() @Override protected void finishRefresh() { super.finishRefresh(); WebServer webServer = startWebServer();// 启动服务器 if (webServer != null) { publishEvent(new ServletWebServerInitializedEvent(webServer, this)); } } 通知监听者-启动程序完成 发布通知监听器启动完成，监听器会根据事件类型做个性化操作 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 listeners.started(context); listeners.running(context); void started(ConfigurableApplicationContext context) { for (SpringApplicationRunListener listener : this.listeners) { listener.started(context); } } void running(ConfigurableApplicationContext context) { for (SpringApplicationRunListener listener : this.listeners) { listener.running(context); } } @Override public void started(ConfigurableApplicationContext context) { context.publishEvent(new ApplicationStartedEvent(this.application, this.args, context)); } @Override public void running(ConfigurableApplicationContext context) { context.publishEvent(new ApplicationReadyEvent(this.application, this.args, context)); } 不定期更新…" /><link rel="canonical" href="https://narule.github.io/posts/SpringBoot-%E5%90%AF%E5%8A%A8%E6%B5%81%E7%A8%8B/" /><meta property="og:url" content="https://narule.github.io/posts/SpringBoot-%E5%90%AF%E5%8A%A8%E6%B5%81%E7%A8%8B/" /><meta property="og:site_name" content="Narule" /><meta property="og:type" content="article" /><meta property="article:published_time" content="2021-01-08T20:10:00+08:00" /><meta name="twitter:card" content="summary" /><meta property="twitter:title" content="SpringBoot-启动流程" /><meta name="twitter:site" content="@no_twitter" /><meta name="twitter:creator" content="@Narule" /><meta name="google-site-verification" content="google_meta_tag_verification" /> <script type="application/ld+json"> {"description":"SpringBoot-启动流程 平时开发springboot项目的时候，一个SpringBootApplication注解加一个main方法就可以启动服务器运行起来（默认tomcat），看了下源码，这里讲下认为主要的流程 主要流程如下 0.启动main方法开始 1.初始化配置：通过类加载器，（loadFactories）读取classpath下所有的spring.factories配置文件，创建一些初始配置对象；通知监听者应用程序启动开始，创建环境对象environment，用于读取环境配置 如 application.yml 2.创建应用程序上下文-createApplicationContext，创建 bean工厂对象 3.刷新上下文（启动核心） 3.1 配置工厂对象，包括上下文类加载器，对象发布处理器，beanFactoryPostProcessor 3.2 注册并实例化bean工厂发布处理器，并且调用这些处理器，对包扫描解析(主要是class文件) 3.3 注册并实例化bean发布处理器 beanPostProcessor 3.4 初始化一些与上下文有特别关系的bean对象（创建tomcat服务器） 3.5 实例化所有bean工厂缓存的bean对象（剩下的） 3.6 发布通知-通知上下文刷新完成（启动tomcat服务器） 4.通知监听者-启动程序完成 启动中，大部分对象都是BeanFactory对象通过反射创建 SpringBoot的启动解析代码过多，下文是整体流程的部分主要代码 启动 启动程序： 1 2 3 4 5 6 7 8 9 10 11 import org.springframework.boot.SpringApplication;//启动类 import org.springframework.boot.autoconfigure.SpringBootApplication; @SpringBootApplication //启动必要注解 public class YourApplication { //运行main方法启动springboot public static void main(String[] args) { SpringApplication.run(YourApplication.class, args);//启动类静态run方法 } } 启动类 org.springframework.boot.SpringApplication 包含主流程方法 启动类在运行静态run方法的时候，是先创建一个SpringApplication对象，再运行对象的run方法，工厂初始配置在构造函数中完成，run方法定义运行总体流程 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 // 静态方法 org.springframework.boot.SpringApplication.run(Class&lt;?&gt;[], String[]) public static ConfigurableApplicationContext run(Class&lt;?&gt;[] primarySources, String[] args) { return new SpringApplication(primarySources).run(args); } // 构造方法 public SpringApplication(ResourceLoader resourceLoader, Class&lt;?&gt;... primarySources) { //.......... //// 1.(loadFactories)读取classpath下所有的spring.factories配置文件 //// // 配置应用程序启动前的初始化对象 setInitializers((Collection) getSpringFactoriesInstances(ApplicationContextInitializer.class)); // 配置应用程序启动前的监听器 setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class)); this.mainApplicationClass = deduceMainApplicationClass(); } // 对象run方法 开始启动程序 public ConfigurableApplicationContext run(String... args) { //...... // 通知监听者启动开始 listeners.starting(); try { // 创建应用程序环境 配置文件在此处读取(application.properties application.yml) ConfigurableEnvironment environment = prepareEnvironment(listeners, applicationArguments); //// 2.创建应用程序上下文...此处创建了beanfactory //// context = createApplicationContext(); //// 3.刷新上下文（spring启动核心） //// refreshContext(context); //// 4.启动完成通知...... //// listeners.started(context); } catch (Throwable ex) { handleRunFailure(context, ex, exceptionReporters, listeners); throw new IllegalStateException(ex); } try { listeners.running(context); } catch (Throwable ex) { handleRunFailure(context, ex, exceptionReporters, null); throw new IllegalStateException(ex); } return context; } 初始化配置 springboot启动应用程序之前，会创建一些初始化对象和监听器 这个操作在构造方法中完成，根据配置文件，创建ApplicationContextInitializer.class,ApplicationListener.class两个接口的实现类，至于具体创建那些类对象，根据下面的方法逻辑去做 org.springframework.boot.SpringApplication.getSpringFactoriesInstances() -&gt; org.springframework.core.io.support.SpringFactoriesLoader.loadFactoryNames() -&gt; org.springframework.core.io.support.SpringFactoriesLoader.loadSpringFactories()-&gt; createSpringFactoriesInstances() 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 //构造方法中的初始化对象创建 setInitializers((Collection) getSpringFactoriesInstances(ApplicationContextInitializer.class)); setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class)); //看一下getSpringFactoriesInstances方法 private &lt;T&gt; Collection&lt;T&gt; getSpringFactoriesInstances(Class&lt;T&gt; type) { return getSpringFactoriesInstances(type, new Class&lt;?&gt;[] {}); } private &lt;T&gt; Collection&lt;T&gt; getSpringFactoriesInstances(Class&lt;T&gt; type, Class&lt;?&gt;[] parameterTypes, Object... args) { ClassLoader classLoader = getClassLoader(); // 获取初始化类的类名 Set&lt;String&gt; names = new LinkedHashSet&lt;&gt;(SpringFactoriesLoader.loadFactoryNames(type, classLoader)); // 通过这些类名实例化对象 List&lt;T&gt; instances = createSpringFactoriesInstances(type, parameterTypes, classLoader, args, names); AnnotationAwareOrderComparator.sort(instances); return instances; } // 读取配置方法 // 更详深层的代码在org.springframework.core.io.support.SpringFactoriesLoader.loadSpringFactories(ClassLoader) public static List&lt;String&gt; loadFactoryNames(Class&lt;?&gt; factoryType, @Nullable ClassLoader classLoader) { String factoryTypeName = factoryType.getName(); return loadSpringFactories(classLoader).getOrDefault(factoryTypeName, Collections.emptyList()); } // loadSpringFactories(classLoader)读取运行环境中所有META-INF/spring.factories配置 通过上面的方法， spring-boot-2.2.8.RELEASE.jar/META-INF/spring.factories的文件中是这样， # Application Context Initializers org.springframework.context.ApplicationContextInitializer=\\ org.springframework.boot.context.ConfigurationWarningsApplicationContextInitializer,\\ org.springframework.boot.context.ContextIdApplicationContextInitializer,\\ org.springframework.boot.context.config.DelegatingApplicationContextInitializer,\\ org.springframework.boot.rsocket.context.RSocketPortInfoApplicationContextInitializer,\\ org.springframework.boot.web.context.ServerPortInfoApplicationContextInitializer 如果只读取这一个文件，loadFactoryNames(ApplicationContextInitializer.class,classLoader)读取返回的就是下面的数组: 1 2 3 4 5 [org.springframework.context.ApplicationContextInitializer, org.springframework.boot.context.ConfigurationWarningsApplicationContextInitializer, org.springframework.boot.context.ContextIdApplicationContextInitializer, org.springframework.boot.context.config.DelegatingApplicationContextInitializer, org.springframework.boot.web.context.ServerPortInfoApplicationContextInitializer] 通过 Class.forName(className)获取这些类的Class，最后反射newInstance创建这些对象 创建好这些对象后，启动监听器 1 listeners.starting(); // 这里也是一些调用操作 读取application配置 监听器启动之后，会读取application.properties 或者 application.yml文件 1 ConfigurableEnvironment environment = prepareEnvironment(listeners, applicationArguments); //此处application.properties配置文件会被读取 创建应用上下文 初始化和配置好后，开始创建应用程序上下文，createApplicationContext ，关键的工厂BeanFactory就是此处创建，具体逻辑如下 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 // 创建应用程序上下文 context = createApplicationContext(); protected ConfigurableApplicationContext createApplicationContext() { // 上下文创建的判断逻辑 Class&lt;?&gt; contextClass = this.applicationContextClass; if (contextClass == null) { try { switch (this.webApplicationType) { case SERVLET: contextClass = Class.forName(DEFAULT_SERVLET_WEB_CONTEXT_CLASS); break; case REACTIVE: contextClass = Class.forName(DEFAULT_REACTIVE_WEB_CONTEXT_CLASS); break; default: contextClass = Class.forName(DEFAULT_CONTEXT_CLASS); } } catch (ClassNotFoundException ex) { throw new IllegalStateException( &quot;Unable create a default ApplicationContext, please specify an ApplicationContextClass&quot;, ex); } } return (ConfigurableApplicationContext) BeanUtils.instantiateClass(contextClass); } public static final String DEFAULT_SERVLET_WEB_CONTEXT_CLASS = &quot;org.springframework.boot.&quot; + &quot;web.servlet.context.AnnotationConfigServletWebServerApplicationContext&quot;; // 默认是创建这个类 这里通过this.webApplicationType判断创建具体的应用上下文，也是反射创建对象，默认创建的是org.springframework.boot.web.servlet.context.AnnotationConfigServletWebServerApplicationContext对象，看一下这个类的基本信息 1 2 3 4 5 6 7 8 9 public class AnnotationConfigServletWebServerApplicationContext extends ServletWebServerApplicationContext implements AnnotationConfigRegistry { // 构造方法 public AnnotationConfigServletWebServerApplicationContext() { this.reader = new AnnotatedBeanDefinitionReader(this); this.scanner = new ClassPathBeanDefinitionScanner(this); } } 创建工厂对象 此类继承了很多类，其中一个父类是org.springframework.context.support.GenericApplicationContext jvm机制，创建对象的时候，先运行父类的构造方法，所以创建了beanFactory 1 2 3 4 // 超级父类 GenericApplicationContext的构造方法 public GenericApplicationContext() { this.beanFactory = new DefaultListableBeanFactory();//创建工厂对象 } 刷新应用上下文 创建好上下文之后，开始刷新上下文，这里做了很多 工厂配置，bean处理器配置，类的扫描，解析，bean定义，bean类信息缓存，服务器创建，bean实例化，动态代理对象的创建等， spring中注册bean信息和实例化bean是两件事情。 注册bean信息不是创建bean对象，是解析bean类获取详细信息，会创建BeanDefinition对象，携带bean类的字节码和方法等信息，把BeanDefinition对象注册保存到工厂BeanDefinitionMap中。 工厂实例化bean时直接BeanDefinitionMap.get(beanName) 获取bean的字节码信息，通过反射创建对象，然后将bean对象保存到singletonObjects中。 1 refreshContext(context); //刷新上下文 默认实际对应的是org.springframework.context.support.AbstractApplicationContext类的refresh()方法 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 @Override public void refresh() throws BeansException, IllegalStateException { synchronized (this.startupShutdownMonitor) { //...... // 3.1配置工厂对象 prepareBeanFactory(beanFactory); try { postProcessBeanFactory(beanFactory); // 3.2注册并实例化bean工厂处理器,并调用他们 invokeBeanFactoryPostProcessors(beanFactory); // 3.3注册并实例化bean处理器 registerBeanPostProcessors(beanFactory); // 3.4 初始化一些与上下文有特别关系的bean对象（创建tomcat） onRefresh(); // 3.5 实例化所有bean工厂缓存的bean对象（剩下的）. finishBeanFactoryInitialization(beanFactory); // 3.6 发布通知-通知上下文刷新完成（包括启动tomcat） finishRefresh(); } catch (BeansException ex) {// ......Propagate exception to caller. throw ex; } finally {// ...... resetCommonCaches(); } } } 配置工厂对象，包括上下文类加载器，bean工厂发布处理器 工厂创建好后，首先配置的是类加载器，然后是一些对象发布处理器（拦截器） 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 //// 3.1配置工厂对象 prepareBeanFactory(beanFactory); protected void prepareBeanFactory(ConfigurableListableBeanFactory beanFactory) { // 设置类加载器 beanFactory.setBeanClassLoader(getClassLoader()); beanFactory.setBeanExpressionResolver(new StandardBeanExpressionResolver(beanFactory.getBeanClassLoader())); beanFactory.addPropertyEditorRegistrar(new ResourceEditorRegistrar(this, getEnvironment())); // 添加BeanPostProcessor beanFactory.addBeanPostProcessor(new ApplicationContextAwareProcessor(this)); beanFactory.ignoreDependencyInterface(EnvironmentAware.class); beanFactory.ignoreDependencyInterface(EmbeddedValueResolverAware.class); // ...... } } 注册并实例化bean工厂发布处理器,并调用他们 过程主要是工厂发布处理器的创建和调用，逻辑较多 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 //// 3.2注册并实例化bean工厂处理器,并调用他们 invokeBeanFactoryPostProcessors(beanFactory); protected void invokeBeanFactoryPostProcessors(ConfigurableListableBeanFactory beanFactory) { PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors(beanFactory, getBeanFactoryPostProcessors()); // ...... } // PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors public static void invokeBeanFactoryPostProcessors( ConfigurableListableBeanFactory beanFactory, List&lt;BeanFactoryPostProcessor&gt; beanFactoryPostProcessors) { postProcessorNames = beanFactory.getBeanNamesForType(BeanDefinitionRegistryPostProcessor.class, true, false); for (String ppName : postProcessorNames) { if (!processedBeans.contains(ppName) &amp;&amp; beanFactory.isTypeMatch(ppName, Ordered.class)) { // 创建BeanDefinitionRegistryPostProcessor处理器 currentRegistryProcessors.add(beanFactory.getBean(ppName, BeanDefinitionRegistryPostProcessor.class)); processedBeans.add(ppName); } } // 调用这些处理器 invokeBeanDefinitionRegistryPostProcessors(currentRegistryProcessors, registry); // ... } // 循环调用 private static void invokeBeanDefinitionRegistryPostProcessors( Collection&lt;? extends BeanDefinitionRegistryPostProcessor&gt; postProcessors, BeanDefinitionRegistry registry) { for (BeanDefinitionRegistryPostProcessor postProcessor : postProcessors) { postProcessor.postProcessBeanDefinitionRegistry(registry); } } BeanDefinitionRegistryPostProcessor的子类对象在此处创建并调postProcessBeanDefinitionRegistry方法。 其中org.springframework.context.annotation.ConfigurationClassPostProcessor就是BeanDefinitionRegistryPostProcessor的子类，是一个spring的类解析器，扫描包下所有的类，解析出bean类，注册到bean工厂由此类主要参与，其中有不少递归 注册并实例化bean发布处理器 1 2 //// 3.3注册并实例化bean处理器 registerBeanPostProcessors(beanFactory); BeanFactoryPostProcessors 和 BeanPostProcessors是有区别的 BeanFactoryPostProcessors 是工厂发布处理器，定义什么是bean，知道哪些是bean类，解析class文件，包括注解解析，成员对象依赖解析等；BeanPostProcessors主要在BeanFactoryPostProcessors调用完之后工作 一般在bean对像的创建之前或之后，BeanFactory调用这些bean处理器拦截处理，Spring代理对象的创建也是通过beanPostProcessor处理器来实现 bean发布处理器生产AOP代理对象 AnnotationAwareAspectJAutoProxyCreator实现了BeanPostProcessors，在bean被工厂创建之后，BeanFactory调用拦截器的postProcessAfterInitialization做拦截处理。此拦截器处理器实际执行的是父类org.springframework.aop.framework.autoproxy.AbstractAutoProxyCreator的方法 比如一个UserServiceImp类有@service注解，并且有切点Aspectj注解增强方法，bean工厂创建userServiceImp后，代理拦截器检测到AOP相关注解，会创建动态代理对象userServiceImp$$EnhancerBySpringCGLIB并返代理对象，而不是返回userServiceImp Spring工厂部分bean创建拦截代码逻辑 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 // org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.initializeBean(String, Object, RootBeanDefinition) // bean初始化 protected Object initializeBean(String beanName, Object bean, @Nullable RootBeanDefinition mbd) { invokeAwareMethods(beanName, bean); Object wrappedBean = bean; if (mbd == null || !mbd.isSynthetic()) { // 初始化之前，拦截 wrappedBean = applyBeanPostProcessorsBeforeInitialization(wrappedBean, beanName); } invokeInitMethods(beanName, wrappedBean, mbd); if (mbd == null || !mbd.isSynthetic()) { // 初始化之后拦截 wrappedBean = applyBeanPostProcessorsAfterInitialization(wrappedBean, beanName); } return wrappedBean; } @Override public Object applyBeanPostProcessorsAfterInitialization(Object existingBean, String beanName) throws BeansException { Object result = existingBean; for (BeanPostProcessor processor : getBeanPostProcessors()) { // 循环bean发布处理器调用postProcessAfterInitialization方法 Object current = processor.postProcessAfterInitialization(result, beanName); if (current == null) { return result; } result = current; } return result; } AbstractAutoProxyCreator在此循环中被调用，比如在userServiceImp服务类上有事务注解@Transactional，一般就会被拦截生成代理对象，添加额外的处理事务的功能代码，返回增强的代理对象 初始化一些与上下文有特别关系的bean对象 默认tomcat服务器的创建就是此方法完成，此处定义特别的bean创建，一般是服务器有关或个性化对象， 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 //// 3.4 初始化一些与上下文有特别关系的bean对象 onRefresh(); // org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext // 子类context重写 @Override protected void onRefresh() { super.onRefresh(); try { createWebServer(); //创建服务器 } catch (Throwable ex) { throw new ApplicationContextException(&quot;Unable to start web server&quot;, ex); } } private void createWebServer() { WebServer webServer = this.webServer; ServletContext servletContext = getServletContext(); if (webServer == null &amp;&amp; servletContext == null) { ServletWebServerFactory factory = getWebServerFactory(); this.webServer = factory.getWebServer(getSelfInitializer()); // 默认创建tomcat服务器 // org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory.getWebServer() } // ...... initPropertySources(); } 实例化所有bean工厂缓存的bean对象 服务器启动后，创建spring工厂里面缓存的bean信息（没有被创建的单例） 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 //// 3.5 实例化所有bean工厂缓存的bean对象（剩下的）. finishBeanFactoryInitialization(beanFactory); protected void finishBeanFactoryInitialization(ConfigurableListableBeanFactory beanFactory) { // ...... // Instantiate all remaining (non-lazy-init) singletons. beanFactory.preInstantiateSingletons(); } // 子类org.springframework.beans.factory.support.DefaultListableBeanFactory实现方法，完成剩下的单例bean对象创建 @Override public void preInstantiateSingletons() throws BeansException { List&lt;String&gt; beanNames = new ArrayList&lt;&gt;(this.beanDefinitionNames); for (String beanName : beanNames) { RootBeanDefinition bd = getMergedLocalBeanDefinition(beanName); if (!bd.isAbstract() &amp;&amp; bd.isSingleton() &amp;&amp; !bd.isLazyInit()) { getBean(beanName); //创建还没有实例化的bean对象 } } } 发布通知-通知上下文刷新完成 上下文初始化完成之后，启动tomcat服务器 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 finishRefresh(); // super.finishRefresh protected void finishRefresh() { // ...... 发布刷行完成事件 // Publish the final event. publishEvent(new ContextRefreshedEvent(this)); } // org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext.finishRefresh() @Override protected void finishRefresh() { super.finishRefresh(); WebServer webServer = startWebServer();// 启动服务器 if (webServer != null) { publishEvent(new ServletWebServerInitializedEvent(webServer, this)); } } 通知监听者-启动程序完成 发布通知监听器启动完成，监听器会根据事件类型做个性化操作 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 listeners.started(context); listeners.running(context); void started(ConfigurableApplicationContext context) { for (SpringApplicationRunListener listener : this.listeners) { listener.started(context); } } void running(ConfigurableApplicationContext context) { for (SpringApplicationRunListener listener : this.listeners) { listener.running(context); } } @Override public void started(ConfigurableApplicationContext context) { context.publishEvent(new ApplicationStartedEvent(this.application, this.args, context)); } @Override public void running(ConfigurableApplicationContext context) { context.publishEvent(new ApplicationReadyEvent(this.application, this.args, context)); } 不定期更新…","headline":"SpringBoot-启动流程","dateModified":"2021-01-17T03:15:14+08:00","datePublished":"2021-01-08T20:10:00+08:00","mainEntityOfPage":{"@type":"WebPage","@id":"https://narule.github.io/posts/SpringBoot-%E5%90%AF%E5%8A%A8%E6%B5%81%E7%A8%8B/"},"url":"https://narule.github.io/posts/SpringBoot-%E5%90%AF%E5%8A%A8%E6%B5%81%E7%A8%8B/","author":{"@type":"Person","name":"Narule"},"@type":"BlogPosting","@context":"https://schema.org"}</script><title>SpringBoot-启动流程 | Narule</title><link rel="shortcut icon" href="/assets/img/favicons/favicon.ico" type="image/x-icon"><link rel="icon" href="/assets/img/favicons/favicon.ico" type="image/x-icon"><link rel="apple-touch-icon" href="/assets/img/favicons/apple-icon.png"><link rel="apple-touch-icon" href="/assets/img/favicons/apple-icon-precomposed.png"><link rel="apple-touch-icon" sizes="57x57" href="/assets/img/favicons/apple-icon-57x57.png"><link rel="apple-touch-icon" sizes="60x60" href="/assets/img/favicons/apple-icon-60x60.png"><link rel="apple-touch-icon" sizes="72x72" href="/assets/img/favicons/apple-icon-72x72.png"><link rel="apple-touch-icon" sizes="76x76" href="/assets/img/favicons/apple-icon-76x76.png"><link rel="apple-touch-icon" sizes="114x114" href="/assets/img/favicons/apple-icon-114x114.png"><link rel="apple-touch-icon" sizes="120x120" href="/assets/img/favicons/apple-icon-120x120.png"><link rel="apple-touch-icon" sizes="144x144" href="/assets/img/favicons/apple-icon-144x144.png"><link rel="apple-touch-icon" sizes="152x152" href="/assets/img/favicons/apple-icon-152x152.png"><link rel="apple-touch-icon" sizes="180x180" href="/assets/img/favicons/apple-icon-180x180.png"><link rel="icon" type="image/png" sizes="192x192" href="/assets/img/favicons/android-icon-192x192.png"><link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicons/favicon-32x32.png"><link rel="icon" type="image/png" sizes="96x96" href="/assets/img/favicons/favicon-96x96.png"><link rel="icon" type="image/png" sizes="16x16" href="/assets/img/favicons/favicon-16x16.png"><link rel="manifest" href="/assets/img/favicons/manifest.json"><meta name='msapplication-config' content='/assets/img/favicons/browserconfig.xml'><meta name="msapplication-TileColor" content="#ffffff"><meta name="msapplication-TileImage" content="/assets/img/favicons/ms-icon-144x144.png"><meta name="theme-color" content="#ffffff"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"><link rel="dns-prefetch" href="https://fonts.gstatic.com"><link rel="preconnect" href="https://www.google-analytics.com" crossorigin="use-credentials"><link rel="dns-prefetch" href="https://www.google-analytics.com"><link rel="preconnect" href="https://www.googletagmanager.com" crossorigin="anonymous"><link rel="dns-prefetch" href="https://www.googletagmanager.com"><link rel="preconnect" href="cdn.jsdelivr.net"><link rel="dns-prefetch" href="cdn.jsdelivr.net"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/css/bootstrap.min.css" integrity="sha256-LA89z+k9fjgMKQ/kq4OO2Mrf8VltYml/VES+Rg0fh20=" crossorigin="anonymous"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.11.2/css/all.min.css" integrity="sha256-+N4/V/SbAFiW1MPBCXnfnP9QSN3+Keu+NlB+0ev/YKQ=" crossorigin="anonymous"><link rel="preload" href="/assets/css/post.css" as="style"><link rel="stylesheet" href="/assets/css/post.css"><link rel="preload" as="style" href="/assets/css/lib/bootstrap-toc.min.css"><link rel="stylesheet" href="/assets/css/lib/bootstrap-toc.min.css" /> <script src="https://cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js"></script> <script defer src="https://cdn.jsdelivr.net/combine/npm/popper.js@1.15.0,npm/bootstrap@4/dist/js/bootstrap.min.js"></script> <script async src="/assets/js/post.min.js"></script> <script defer src="/app.js"></script> <script defer src="https://www.googletagmanager.com/gtag/js?id=G-JVHJ82NYZT"></script> <script> document.addEventListener("DOMContentLoaded", function(event) { window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', 'G-JVHJ82NYZT'); }); </script><body data-spy="scroll" data-target="#toc"><div id="sidebar" class="d-flex flex-column align-items-end"><div class="profile-wrapper text-center"><div id="avatar"> <a href="/" alt="avatar" class="mx-auto"> <img src="https://narule.github.io/avatar.png" alt="avatar" onerror="this.style.display='none'"> </a></div><div class="site-title mt-3"> <a href="/">Narule</a></div><div class="site-subtitle font-italic">A Blog for Article; Chinese Blog is www.cnblogs.com/narule</div></div><ul class="w-100"><li class="nav-item"> <a href="/" class="nav-link"> <i class="fa-fw fas fa-home ml-xl-3 mr-xl-3 unloaded"></i> <span>HOME</span> </a><li class="nav-item"> <a href="/tabs/categories/" class="nav-link"> <i class="fa-fw fas fa-stream ml-xl-3 mr-xl-3 unloaded"></i> <span>CATEGORIES</span> </a><li class="nav-item"> <a href="/tabs/tags/" class="nav-link"> <i class="fa-fw fas fa-tags ml-xl-3 mr-xl-3 unloaded"></i> <span>TAGS</span> </a><li class="nav-item"> <a href="/tabs/archives/" class="nav-link"> <i class="fa-fw fas fa-archive ml-xl-3 mr-xl-3 unloaded"></i> <span>ARCHIVES</span> </a><li class="nav-item"> <a href="/tabs/about/" class="nav-link"> <i class="fa-fw fas fa-info ml-xl-3 mr-xl-3 unloaded"></i> <span>ABOUT</span> </a></ul><div class="sidebar-bottom mt-auto d-flex flex-wrap justify-content-center"> <a href="https://github.com/narule" aria-label="github" class="order-3" target="_blank" rel="noopener"> <i class="fab fa-github-alt"></i> </a> <a href="https://twitter.com/no_twitter" aria-label="twitter" class="order-4" target="_blank" rel="noopener"> <i class="fab fa-twitter"></i> </a> <a href=" javascript:location.href = 'mailto:' + ['narule','163.com'].join('@')" aria-label="email" class="order-5" > <i class="fas fa-envelope"></i> </a> <a href="/feed.xml" aria-label="rss" class="order-6" > <i class="fas fa-rss"></i> </a> <span class="icon-border order-2"></span> <span id="mode-toggle-wrapper" class="order-1"> <i class="mode-toggle fas fa-adjust"></i> <script type="text/javascript"> class ModeToggle { static get MODE_KEY() { return "mode"; } static get DARK_MODE() { return "dark"; } static get LIGHT_MODE() { return "light"; } constructor() { if (this.hasMode) { if (this.isDarkMode) { if (!this.isSysDarkPrefer) { this.setDark(); } } else { if (this.isSysDarkPrefer) { this.setLight(); } } } var self = this; /* always follow the system prefers */ this.sysDarkPrefers.addListener(function() { if (self.hasMode) { if (self.isDarkMode) { if (!self.isSysDarkPrefer) { self.setDark(); } } else { if (self.isSysDarkPrefer) { self.setLight(); } } self.clearMode(); } self.updateMermaid(); }); } /* constructor() */ setDark() { $('html').attr(ModeToggle.MODE_KEY, ModeToggle.DARK_MODE); sessionStorage.setItem(ModeToggle.MODE_KEY, ModeToggle.DARK_MODE); } setLight() { $('html').attr(ModeToggle.MODE_KEY, ModeToggle.LIGHT_MODE); sessionStorage.setItem(ModeToggle.MODE_KEY, ModeToggle.LIGHT_MODE); } clearMode() { $('html').removeAttr(ModeToggle.MODE_KEY); sessionStorage.removeItem(ModeToggle.MODE_KEY); } get sysDarkPrefers() { return window.matchMedia("(prefers-color-scheme: dark)"); } get isSysDarkPrefer() { return this.sysDarkPrefers.matches; } get isDarkMode() { return this.mode == ModeToggle.DARK_MODE; } get isLightMode() { return this.mode == ModeToggle.LIGHT_MODE; } get hasMode() { return this.mode != null; } get mode() { return sessionStorage.getItem(ModeToggle.MODE_KEY); } /* get the current mode on screen */ get modeStatus() { if (this.isDarkMode || (!this.hasMode && this.isSysDarkPrefer) ) { return ModeToggle.DARK_MODE; } else { return ModeToggle.LIGHT_MODE; } } updateMermaid() { if (typeof mermaid !== "undefined") { let expectedTheme = (this.modeStatus === ModeToggle.DARK_MODE? "dark" : "default"); let config = { theme: expectedTheme }; /* re-render the SVG › <https://github.com/mermaid-js/mermaid/issues/311#issuecomment-332557344> */ $(".mermaid").each(function() { let svgCode = $(this).prev().children().html(); $(this).removeAttr("data-processed"); $(this).html(svgCode); }); mermaid.initialize(config); mermaid.init(undefined, ".mermaid"); } } flipMode() { if (this.hasMode) { if (this.isSysDarkPrefer) { if (this.isLightMode) { this.clearMode(); } else { this.setLight(); } } else { if (this.isDarkMode) { this.clearMode(); } else { this.setDark(); } } } else { if (this.isSysDarkPrefer) { this.setLight(); } else { this.setDark(); } } this.updateMermaid(); } /* flipMode() */ } /* ModeToggle */ let toggle = new ModeToggle(); $(".mode-toggle").click(function() { toggle.flipMode(); }); </script> </span></div></div><div id="topbar-wrapper" class="row justify-content-center topbar-down"><div id="topbar" class="col-11 d-flex h-100 align-items-center justify-content-between"> <span id="breadcrumb"> <span> <a href="/"> Posts </a> </span> <span>SpringBoot-启动流程</span> </span> <i id="sidebar-trigger" class="fas fa-bars fa-fw"></i><div id="topbar-title"> Post</div><i id="search-trigger" class="fas fa-search fa-fw"></i> <span id="search-wrapper" class="align-items-center"> <i class="fas fa-search fa-fw"></i> <input class="form-control" id="search-input" type="search" aria-label="search" placeholder="Search..."> <i class="fa fa-times-circle fa-fw" id="search-cleaner"></i> </span> <span id="search-cancel" >Cancel</span></div></div><div id="main-wrapper"><div id="main"><div class="row"><div id="post-wrapper" class="col-12 col-lg-11 col-xl-8"><div class="post pl-1 pr-1 pl-sm-2 pr-sm-2 pl-md-4 pr-md-4"><h1 data-toc-skip>SpringBoot-启动流程</h1><div class="post-meta text-muted d-flex flex-column"><div> <span class="timeago " data-toggle="tooltip" data-placement="bottom" title="Fri, Jan 8, 2021, 8:10 PM +0800" > Jan 8, 2021 <i class="unloaded">2021-01-08T20:10:00+08:00</i> </span> by <span class="author"> Narule </span></div><div> <span> Updated <span class="timeago lastmod" data-toggle="tooltip" data-placement="bottom" title="Sun, Jan 17, 2021, 3:15 AM +0800" > Jan 17, 2021 <i class="unloaded">2021-01-17T03:15:14+08:00</i> </span> </span> <span class="readtime" data-toggle="tooltip" data-placement="bottom" title="3381 words">18 min</span></div></div><div class="post-content"><h1 id="springboot-启动流程">SpringBoot-启动流程</h1><p>平时开发springboot项目的时候，一个SpringBootApplication注解加一个main方法就可以启动服务器运行起来（默认tomcat），看了下源码，这里讲下认为主要的流程</p><p><strong>主要流程如下</strong></p><p>0.启动main方法开始</p><p>1.<strong>初始化配置</strong>：通过类加载器，（loadFactories）读取classpath下所有的spring.factories配置文件，创建一些初始配置对象；通知监听者应用程序启动开始，创建环境对象environment，用于读取环境配置 如 application.yml</p><p>2.<strong>创建应用程序上下文</strong>-createApplicationContext，创建 bean工厂对象</p><p>3.<strong>刷新上下文（启动核心）</strong> 3.1 配置工厂对象，包括上下文类加载器，对象发布处理器，beanFactoryPostProcessor 3.2 注册并实例化bean工厂发布处理器，并且调用这些处理器，对包扫描解析(主要是class文件) 3.3 注册并实例化bean发布处理器 beanPostProcessor 3.4 初始化一些与上下文有特别关系的bean对象（创建tomcat服务器） 3.5 实例化所有bean工厂缓存的bean对象（剩下的） 3.6 发布通知-通知上下文刷新完成（启动tomcat服务器）</p><p>4.<strong>通知监听者-启动程序完成</strong></p><p>启动中，大部分对象都是BeanFactory对象通过反射创建</p><p>SpringBoot的启动解析代码过多，下文是整体流程的部分主要代码</p><h3 id="启动">启动</h3><p>启动程序：</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+</pre><td class="rouge-code"><pre><span class="kn">import</span> <span class="nn">org.springframework.boot.SpringApplication</span><span class="o">;</span><span class="c1">//启动类</span>
+<span class="kn">import</span> <span class="nn">org.springframework.boot.autoconfigure.SpringBootApplication</span><span class="o">;</span>
+
+<span class="nd">@SpringBootApplication</span> <span class="c1">//启动必要注解</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">YourApplication</span> <span class="o">{</span>
+	<span class="c1">//运行main方法启动springboot</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">main</span><span class="o">(</span><span class="nc">String</span><span class="o">[]</span> <span class="n">args</span><span class="o">)</span> <span class="o">{</span>
+		<span class="nc">SpringApplication</span><span class="o">.</span><span class="na">run</span><span class="o">(</span><span class="nc">YourApplication</span><span class="o">.</span><span class="na">class</span><span class="o">,</span> <span class="n">args</span><span class="o">);</span><span class="c1">//启动类静态run方法</span>
+	<span class="o">}</span>
+    
+<span class="o">}</span>
+</pre></table></code></div></div><h3 id="启动类">启动类</h3><p><code class="language-plaintext highlighter-rouge">org.springframework.boot.SpringApplication</code> 包含主流程方法</p><p>启动类在运行静态run方法的时候，是先创建一个SpringApplication对象，再运行对象的run方法，工厂初始配置在构造函数中完成，run方法定义运行总体流程</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+</pre><td class="rouge-code"><pre><span class="c1">// 静态方法 org.springframework.boot.SpringApplication.run(Class&lt;?&gt;[], String[])</span>
+<span class="kd">public</span> <span class="kd">static</span> <span class="nc">ConfigurableApplicationContext</span> <span class="nf">run</span><span class="o">(</span><span class="nc">Class</span><span class="o">&lt;?&gt;[]</span> <span class="n">primarySources</span><span class="o">,</span> <span class="nc">String</span><span class="o">[]</span> <span class="n">args</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">return</span> <span class="k">new</span> <span class="nf">SpringApplication</span><span class="o">(</span><span class="n">primarySources</span><span class="o">).</span><span class="na">run</span><span class="o">(</span><span class="n">args</span><span class="o">);</span>
+<span class="o">}</span>
+
+<span class="c1">// 构造方法</span>
+<span class="kd">public</span> <span class="nf">SpringApplication</span><span class="o">(</span><span class="nc">ResourceLoader</span> <span class="n">resourceLoader</span><span class="o">,</span> <span class="nc">Class</span><span class="o">&lt;?&gt;...</span> <span class="n">primarySources</span><span class="o">)</span> <span class="o">{</span>
+    <span class="c1">//.......... </span>
+    <span class="c1">//// 1.(loadFactories)读取classpath下所有的spring.factories配置文件 ////</span>
+    <span class="c1">// 配置应用程序启动前的初始化对象</span>
+    <span class="n">setInitializers</span><span class="o">((</span><span class="nc">Collection</span><span class="o">)</span> <span class="n">getSpringFactoriesInstances</span><span class="o">(</span><span class="nc">ApplicationContextInitializer</span><span class="o">.</span><span class="na">class</span><span class="o">));</span> 
+    <span class="c1">// 配置应用程序启动前的监听器</span>
+    <span class="n">setListeners</span><span class="o">((</span><span class="nc">Collection</span><span class="o">)</span> <span class="n">getSpringFactoriesInstances</span><span class="o">(</span><span class="nc">ApplicationListener</span><span class="o">.</span><span class="na">class</span><span class="o">));</span>
+    <span class="k">this</span><span class="o">.</span><span class="na">mainApplicationClass</span> <span class="o">=</span> <span class="n">deduceMainApplicationClass</span><span class="o">();</span>
+<span class="o">}</span>
+
+<span class="c1">// 对象run方法 开始启动程序</span>
+<span class="kd">public</span> <span class="nc">ConfigurableApplicationContext</span> <span class="nf">run</span><span class="o">(</span><span class="nc">String</span><span class="o">...</span> <span class="n">args</span><span class="o">)</span> <span class="o">{</span>
+    <span class="c1">//......</span>
+    <span class="c1">// 通知监听者启动开始</span>
+    <span class="n">listeners</span><span class="o">.</span><span class="na">starting</span><span class="o">();</span> 
+    <span class="k">try</span> <span class="o">{</span>
+        <span class="c1">// 创建应用程序环境 配置文件在此处读取(application.properties application.yml)</span>
+        <span class="nc">ConfigurableEnvironment</span> <span class="n">environment</span> <span class="o">=</span> <span class="n">prepareEnvironment</span><span class="o">(</span><span class="n">listeners</span><span class="o">,</span> <span class="n">applicationArguments</span><span class="o">);</span>
+        <span class="c1">//// 2.创建应用程序上下文...此处创建了beanfactory ////</span>
+        <span class="n">context</span> <span class="o">=</span> <span class="n">createApplicationContext</span><span class="o">();</span>
+        <span class="c1">//// 3.刷新上下文（spring启动核心） ////</span>
+        <span class="n">refreshContext</span><span class="o">(</span><span class="n">context</span><span class="o">);</span>
+
+        <span class="c1">//// 4.启动完成通知...... ////</span>
+        <span class="n">listeners</span><span class="o">.</span><span class="na">started</span><span class="o">(</span><span class="n">context</span><span class="o">);</span>
+    <span class="o">}</span>
+    <span class="k">catch</span> <span class="o">(</span><span class="nc">Throwable</span> <span class="n">ex</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">handleRunFailure</span><span class="o">(</span><span class="n">context</span><span class="o">,</span> <span class="n">ex</span><span class="o">,</span> <span class="n">exceptionReporters</span><span class="o">,</span> <span class="n">listeners</span><span class="o">);</span>
+        <span class="k">throw</span> <span class="k">new</span> <span class="nf">IllegalStateException</span><span class="o">(</span><span class="n">ex</span><span class="o">);</span>
+    <span class="o">}</span>
+    <span class="k">try</span> <span class="o">{</span>
+        <span class="n">listeners</span><span class="o">.</span><span class="na">running</span><span class="o">(</span><span class="n">context</span><span class="o">);</span>
+    <span class="o">}</span>
+    <span class="k">catch</span> <span class="o">(</span><span class="nc">Throwable</span> <span class="n">ex</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">handleRunFailure</span><span class="o">(</span><span class="n">context</span><span class="o">,</span> <span class="n">ex</span><span class="o">,</span> <span class="n">exceptionReporters</span><span class="o">,</span> <span class="kc">null</span><span class="o">);</span>
+        <span class="k">throw</span> <span class="k">new</span> <span class="nf">IllegalStateException</span><span class="o">(</span><span class="n">ex</span><span class="o">);</span>
+    <span class="o">}</span>
+    <span class="k">return</span> <span class="n">context</span><span class="o">;</span>
+<span class="o">}</span>
+</pre></table></code></div></div><h2 id="初始化配置">初始化配置</h2><p><strong>springboot启动应用程序之前，会创建一些初始化对象和监听器</strong></p><p>这个操作在构造方法中完成，根据配置文件，创建<code class="language-plaintext highlighter-rouge">ApplicationContextInitializer.class</code>,<code class="language-plaintext highlighter-rouge">ApplicationListener.class</code>两个接口的实现类，至于具体创建那些类对象，根据下面的方法逻辑去做</p><p><code class="language-plaintext highlighter-rouge">org.springframework.boot.SpringApplication.getSpringFactoriesInstances()</code> -&gt; <code class="language-plaintext highlighter-rouge">org.springframework.core.io.support.SpringFactoriesLoader.loadFactoryNames()</code> -&gt; <code class="language-plaintext highlighter-rouge">org.springframework.core.io.support.SpringFactoriesLoader.loadSpringFactories()</code>-&gt; <code class="language-plaintext highlighter-rouge">createSpringFactoriesInstances()</code></p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+</pre><td class="rouge-code"><pre><span class="c1">//构造方法中的初始化对象创建</span>
+<span class="n">setInitializers</span><span class="o">((</span><span class="nc">Collection</span><span class="o">)</span> <span class="n">getSpringFactoriesInstances</span><span class="o">(</span><span class="nc">ApplicationContextInitializer</span><span class="o">.</span><span class="na">class</span><span class="o">));</span> 
+<span class="n">setListeners</span><span class="o">((</span><span class="nc">Collection</span><span class="o">)</span> <span class="n">getSpringFactoriesInstances</span><span class="o">(</span><span class="nc">ApplicationListener</span><span class="o">.</span><span class="na">class</span><span class="o">));</span>
+
+<span class="c1">//看一下getSpringFactoriesInstances方法</span>
+<span class="kd">private</span> <span class="o">&lt;</span><span class="no">T</span><span class="o">&gt;</span> <span class="nc">Collection</span><span class="o">&lt;</span><span class="no">T</span><span class="o">&gt;</span> <span class="nf">getSpringFactoriesInstances</span><span class="o">(</span><span class="nc">Class</span><span class="o">&lt;</span><span class="no">T</span><span class="o">&gt;</span> <span class="n">type</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">return</span> <span class="nf">getSpringFactoriesInstances</span><span class="o">(</span><span class="n">type</span><span class="o">,</span> <span class="k">new</span> <span class="nc">Class</span><span class="o">&lt;?&gt;[]</span> <span class="o">{});</span>
+<span class="o">}</span>
+
+<span class="kd">private</span> <span class="o">&lt;</span><span class="no">T</span><span class="o">&gt;</span> <span class="nc">Collection</span><span class="o">&lt;</span><span class="no">T</span><span class="o">&gt;</span> <span class="nf">getSpringFactoriesInstances</span><span class="o">(</span><span class="nc">Class</span><span class="o">&lt;</span><span class="no">T</span><span class="o">&gt;</span> <span class="n">type</span><span class="o">,</span> <span class="nc">Class</span><span class="o">&lt;?&gt;[]</span> <span class="n">parameterTypes</span><span class="o">,</span> <span class="nc">Object</span><span class="o">...</span> <span class="n">args</span><span class="o">)</span> <span class="o">{</span>
+    <span class="nc">ClassLoader</span> <span class="n">classLoader</span> <span class="o">=</span> <span class="n">getClassLoader</span><span class="o">();</span>
+    <span class="c1">// 获取初始化类的类名</span>
+    <span class="nc">Set</span><span class="o">&lt;</span><span class="nc">String</span><span class="o">&gt;</span> <span class="n">names</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">LinkedHashSet</span><span class="o">&lt;&gt;(</span><span class="nc">SpringFactoriesLoader</span><span class="o">.</span><span class="na">loadFactoryNames</span><span class="o">(</span><span class="n">type</span><span class="o">,</span> <span class="n">classLoader</span><span class="o">));</span>
+    <span class="c1">// 通过这些类名实例化对象</span>
+    <span class="nc">List</span><span class="o">&lt;</span><span class="no">T</span><span class="o">&gt;</span> <span class="n">instances</span> <span class="o">=</span> <span class="n">createSpringFactoriesInstances</span><span class="o">(</span><span class="n">type</span><span class="o">,</span> <span class="n">parameterTypes</span><span class="o">,</span> <span class="n">classLoader</span><span class="o">,</span> <span class="n">args</span><span class="o">,</span> <span class="n">names</span><span class="o">);</span>
+    <span class="nc">AnnotationAwareOrderComparator</span><span class="o">.</span><span class="na">sort</span><span class="o">(</span><span class="n">instances</span><span class="o">);</span>
+    <span class="k">return</span> <span class="n">instances</span><span class="o">;</span>
+<span class="o">}</span>
+
+<span class="c1">// 读取配置方法</span>
+<span class="c1">// 更详深层的代码在org.springframework.core.io.support.SpringFactoriesLoader.loadSpringFactories(ClassLoader)</span>
+<span class="kd">public</span> <span class="kd">static</span> <span class="nc">List</span><span class="o">&lt;</span><span class="nc">String</span><span class="o">&gt;</span> <span class="nf">loadFactoryNames</span><span class="o">(</span><span class="nc">Class</span><span class="o">&lt;?&gt;</span> <span class="n">factoryType</span><span class="o">,</span> <span class="nd">@Nullable</span> <span class="nc">ClassLoader</span> <span class="n">classLoader</span><span class="o">)</span> <span class="o">{</span>
+    <span class="nc">String</span> <span class="n">factoryTypeName</span> <span class="o">=</span> <span class="n">factoryType</span><span class="o">.</span><span class="na">getName</span><span class="o">();</span>
+    <span class="k">return</span> <span class="nf">loadSpringFactories</span><span class="o">(</span><span class="n">classLoader</span><span class="o">).</span><span class="na">getOrDefault</span><span class="o">(</span><span class="n">factoryTypeName</span><span class="o">,</span> <span class="nc">Collections</span><span class="o">.</span><span class="na">emptyList</span><span class="o">());</span>   
+<span class="o">}</span>
+<span class="c1">// loadSpringFactories(classLoader)读取运行环境中所有META-INF/spring.factories配置</span>
+</pre></table></code></div></div><p>通过上面的方法，</p><p>spring-boot-2.2.8.RELEASE.jar/META-INF/spring.factories的文件中是这样，</p><pre><code class="language-F#"># Application Context Initializers
+org.springframework.context.ApplicationContextInitializer=\
+org.springframework.boot.context.ConfigurationWarningsApplicationContextInitializer,\
+org.springframework.boot.context.ContextIdApplicationContextInitializer,\
+org.springframework.boot.context.config.DelegatingApplicationContextInitializer,\
+org.springframework.boot.rsocket.context.RSocketPortInfoApplicationContextInitializer,\
+org.springframework.boot.web.context.ServerPortInfoApplicationContextInitializer
+</code></pre><p>如果只读取这一个文件，<code class="language-plaintext highlighter-rouge">loadFactoryNames(ApplicationContextInitializer.class,classLoader)</code>读取返回的就是下面的数组:</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+</pre><td class="rouge-code"><pre><span class="o">[</span><span class="n">org</span><span class="o">.</span><span class="na">springframework</span><span class="o">.</span><span class="na">context</span><span class="o">.</span><span class="na">ApplicationContextInitializer</span><span class="o">,</span>
+ <span class="n">org</span><span class="o">.</span><span class="na">springframework</span><span class="o">.</span><span class="na">boot</span><span class="o">.</span><span class="na">context</span><span class="o">.</span><span class="na">ConfigurationWarningsApplicationContextInitializer</span><span class="o">,</span>
+ <span class="n">org</span><span class="o">.</span><span class="na">springframework</span><span class="o">.</span><span class="na">boot</span><span class="o">.</span><span class="na">context</span><span class="o">.</span><span class="na">ContextIdApplicationContextInitializer</span><span class="o">,</span>
+ <span class="n">org</span><span class="o">.</span><span class="na">springframework</span><span class="o">.</span><span class="na">boot</span><span class="o">.</span><span class="na">context</span><span class="o">.</span><span class="na">config</span><span class="o">.</span><span class="na">DelegatingApplicationContextInitializer</span><span class="o">,</span>
+ <span class="n">org</span><span class="o">.</span><span class="na">springframework</span><span class="o">.</span><span class="na">boot</span><span class="o">.</span><span class="na">web</span><span class="o">.</span><span class="na">context</span><span class="o">.</span><span class="na">ServerPortInfoApplicationContextInitializer</span><span class="o">]</span>
+</pre></table></code></div></div><p>通过<code class="language-plaintext highlighter-rouge"> Class.forName(className)</code>获取这些类的Class，最后反射<code class="language-plaintext highlighter-rouge">newInstance</code>创建这些对象</p><p><strong>创建好这些对象后，启动监听器</strong></p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+</pre><td class="rouge-code"><pre><span class="n">listeners</span><span class="o">.</span><span class="na">starting</span><span class="o">();</span>  <span class="c1">// 这里也是一些调用操作</span>
+</pre></table></code></div></div><p><strong>读取application配置</strong></p><p>监听器启动之后，会读取application.properties 或者 application.yml文件</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+</pre><td class="rouge-code"><pre><span class="nc">ConfigurableEnvironment</span> <span class="n">environment</span> <span class="o">=</span> <span class="n">prepareEnvironment</span><span class="o">(</span><span class="n">listeners</span><span class="o">,</span> <span class="n">applicationArguments</span><span class="o">);</span> <span class="c1">//此处application.properties配置文件会被读取</span>
+</pre></table></code></div></div><h2 id="创建应用上下文">创建应用上下文</h2><p>初始化和配置好后，开始创建应用程序上下文，createApplicationContext ，关键的工厂BeanFactory就是此处创建，具体逻辑如下</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+</pre><td class="rouge-code"><pre><span class="c1">// 创建应用程序上下文</span>
+<span class="n">context</span> <span class="o">=</span> <span class="n">createApplicationContext</span><span class="o">();</span>
+
+<span class="kd">protected</span> <span class="nc">ConfigurableApplicationContext</span> <span class="nf">createApplicationContext</span><span class="o">()</span> <span class="o">{</span>
+    <span class="c1">// 上下文创建的判断逻辑</span>
+    <span class="nc">Class</span><span class="o">&lt;?&gt;</span> <span class="n">contextClass</span> <span class="o">=</span> <span class="k">this</span><span class="o">.</span><span class="na">applicationContextClass</span><span class="o">;</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">contextClass</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="k">switch</span> <span class="o">(</span><span class="k">this</span><span class="o">.</span><span class="na">webApplicationType</span><span class="o">)</span> <span class="o">{</span>
+                <span class="k">case</span> <span class="nl">SERVLET:</span>
+                    <span class="n">contextClass</span> <span class="o">=</span> <span class="nc">Class</span><span class="o">.</span><span class="na">forName</span><span class="o">(</span><span class="no">DEFAULT_SERVLET_WEB_CONTEXT_CLASS</span><span class="o">);</span>
+                    <span class="k">break</span><span class="o">;</span>
+                <span class="k">case</span> <span class="nl">REACTIVE:</span>
+                    <span class="n">contextClass</span> <span class="o">=</span> <span class="nc">Class</span><span class="o">.</span><span class="na">forName</span><span class="o">(</span><span class="no">DEFAULT_REACTIVE_WEB_CONTEXT_CLASS</span><span class="o">);</span>
+                    <span class="k">break</span><span class="o">;</span>
+                <span class="k">default</span><span class="o">:</span>
+                    <span class="n">contextClass</span> <span class="o">=</span> <span class="nc">Class</span><span class="o">.</span><span class="na">forName</span><span class="o">(</span><span class="no">DEFAULT_CONTEXT_CLASS</span><span class="o">);</span>
+            <span class="o">}</span>
+        <span class="o">}</span>
+        <span class="k">catch</span> <span class="o">(</span><span class="nc">ClassNotFoundException</span> <span class="n">ex</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">throw</span> <span class="k">new</span> <span class="nf">IllegalStateException</span><span class="o">(</span>
+                <span class="s">"Unable create a default ApplicationContext, please specify an ApplicationContextClass"</span><span class="o">,</span> <span class="n">ex</span><span class="o">);</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+    <span class="k">return</span> <span class="o">(</span><span class="nc">ConfigurableApplicationContext</span><span class="o">)</span> <span class="nc">BeanUtils</span><span class="o">.</span><span class="na">instantiateClass</span><span class="o">(</span><span class="n">contextClass</span><span class="o">);</span>
+<span class="o">}</span>
+
+<span class="kd">public</span> <span class="kd">static</span> <span class="kd">final</span> <span class="nc">String</span> <span class="no">DEFAULT_SERVLET_WEB_CONTEXT_CLASS</span> <span class="o">=</span> <span class="s">"org.springframework.boot."</span>
+			<span class="o">+</span> <span class="s">"web.servlet.context.AnnotationConfigServletWebServerApplicationContext"</span><span class="o">;</span>
+<span class="c1">// 默认是创建这个类</span>
+</pre></table></code></div></div><p>这里通过this.webApplicationType判断创建具体的应用上下文，也是反射创建对象，默认创建的是<code class="language-plaintext highlighter-rouge">org.springframework.boot.web.servlet.context.AnnotationConfigServletWebServerApplicationContext</code>对象，看一下这个类的基本信息</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+</pre><td class="rouge-code"><pre><span class="kd">public</span> <span class="kd">class</span> <span class="nc">AnnotationConfigServletWebServerApplicationContext</span> <span class="kd">extends</span> <span class="nc">ServletWebServerApplicationContext</span>
+		<span class="kd">implements</span> <span class="nc">AnnotationConfigRegistry</span> <span class="o">{</span>
+    <span class="c1">// 构造方法</span>
+	<span class="kd">public</span> <span class="nf">AnnotationConfigServletWebServerApplicationContext</span><span class="o">()</span> <span class="o">{</span>
+		<span class="k">this</span><span class="o">.</span><span class="na">reader</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">AnnotatedBeanDefinitionReader</span><span class="o">(</span><span class="k">this</span><span class="o">);</span>
+		<span class="k">this</span><span class="o">.</span><span class="na">scanner</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ClassPathBeanDefinitionScanner</span><span class="o">(</span><span class="k">this</span><span class="o">);</span>
+	<span class="o">}</span>
+<span class="o">}</span>
+
+</pre></table></code></div></div><p><strong>创建工厂对象</strong></p><p>此类继承了很多类，其中一个父类是<code class="language-plaintext highlighter-rouge">org.springframework.context.support.GenericApplicationContext</code> jvm机制，创建对象的时候，先运行父类的构造方法，所以创建了beanFactory</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+</pre><td class="rouge-code"><pre><span class="c1">// 超级父类 GenericApplicationContext的构造方法</span>
+<span class="kd">public</span> <span class="nf">GenericApplicationContext</span><span class="o">()</span> <span class="o">{</span>
+    <span class="k">this</span><span class="o">.</span><span class="na">beanFactory</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">DefaultListableBeanFactory</span><span class="o">();</span><span class="c1">//创建工厂对象</span>
+<span class="o">}</span>
+</pre></table></code></div></div><h2 id="刷新应用上下文">刷新应用上下文</h2><p>创建好上下文之后，开始刷新上下文，这里做了很多</p><p>工厂配置，bean处理器配置，类的扫描，解析，bean定义，bean类信息缓存，服务器创建，bean实例化，动态代理对象的创建等，</p><p><strong>spring中注册bean信息和实例化bean是两件事情。</strong></p><p>注册bean信息不是创建bean对象，是解析bean类获取详细信息，会创建BeanDefinition对象，携带bean类的字节码和方法等信息，把BeanDefinition对象注册保存到工厂BeanDefinitionMap中。</p><p>工厂实例化bean时直接BeanDefinitionMap.get(beanName) 获取bean的字节码信息，通过反射创建对象，然后将bean对象保存到singletonObjects中。</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+</pre><td class="rouge-code"><pre><span class="n">refreshContext</span><span class="o">(</span><span class="n">context</span><span class="o">);</span> <span class="c1">//刷新上下文</span>
+</pre></table></code></div></div><p>默认实际对应的是<code class="language-plaintext highlighter-rouge">org.springframework.context.support.AbstractApplicationContext</code>类的<code class="language-plaintext highlighter-rouge">refresh()</code>方法</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+</pre><td class="rouge-code"><pre><span class="nd">@Override</span>
+<span class="kd">public</span> <span class="kt">void</span> <span class="nf">refresh</span><span class="o">()</span> <span class="kd">throws</span> <span class="nc">BeansException</span><span class="o">,</span> <span class="nc">IllegalStateException</span> <span class="o">{</span>
+    <span class="kd">synchronized</span> <span class="o">(</span><span class="k">this</span><span class="o">.</span><span class="na">startupShutdownMonitor</span><span class="o">)</span> <span class="o">{</span>
+        <span class="c1">//......</span>
+        <span class="c1">// 3.1配置工厂对象</span>
+        <span class="n">prepareBeanFactory</span><span class="o">(</span><span class="n">beanFactory</span><span class="o">);</span>
+        <span class="k">try</span> <span class="o">{</span>       
+            <span class="n">postProcessBeanFactory</span><span class="o">(</span><span class="n">beanFactory</span><span class="o">);</span>
+            
+            <span class="c1">// 3.2注册并实例化bean工厂处理器,并调用他们</span>
+            <span class="n">invokeBeanFactoryPostProcessors</span><span class="o">(</span><span class="n">beanFactory</span><span class="o">);</span>
+            
+            <span class="c1">// 3.3注册并实例化bean处理器</span>
+            <span class="n">registerBeanPostProcessors</span><span class="o">(</span><span class="n">beanFactory</span><span class="o">);</span>
+            
+            <span class="c1">// 3.4 初始化一些与上下文有特别关系的bean对象（创建tomcat）</span>
+            <span class="n">onRefresh</span><span class="o">();</span>
+            
+            <span class="c1">// 3.5 实例化所有bean工厂缓存的bean对象（剩下的）.</span>
+            <span class="n">finishBeanFactoryInitialization</span><span class="o">(</span><span class="n">beanFactory</span><span class="o">);</span>
+            
+            <span class="c1">// 3.6 发布通知-通知上下文刷新完成（包括启动tomcat）</span>
+            <span class="n">finishRefresh</span><span class="o">();</span>
+        <span class="o">}</span>
+        <span class="k">catch</span> <span class="o">(</span><span class="nc">BeansException</span> <span class="n">ex</span><span class="o">)</span> <span class="o">{</span><span class="c1">// ......Propagate exception to caller.</span>
+            <span class="k">throw</span> <span class="n">ex</span><span class="o">;</span>
+        <span class="o">}</span>
+        <span class="k">finally</span> <span class="o">{</span><span class="c1">// ......</span>
+            <span class="n">resetCommonCaches</span><span class="o">();</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</pre></table></code></div></div><h3 id="配置工厂对象包括上下文类加载器bean工厂发布处理器">配置工厂对象，包括上下文类加载器，bean工厂发布处理器</h3><p>工厂创建好后，首先配置的是类加载器，然后是一些对象发布处理器（拦截器）</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+</pre><td class="rouge-code"><pre><span class="c1">//// 3.1配置工厂对象 </span>
+<span class="n">prepareBeanFactory</span><span class="o">(</span><span class="n">beanFactory</span><span class="o">);</span>
+
+<span class="kd">protected</span> <span class="kt">void</span> <span class="nf">prepareBeanFactory</span><span class="o">(</span><span class="nc">ConfigurableListableBeanFactory</span> <span class="n">beanFactory</span><span class="o">)</span> <span class="o">{</span>
+    <span class="c1">// 设置类加载器</span>
+    <span class="n">beanFactory</span><span class="o">.</span><span class="na">setBeanClassLoader</span><span class="o">(</span><span class="n">getClassLoader</span><span class="o">());</span>
+    <span class="n">beanFactory</span><span class="o">.</span><span class="na">setBeanExpressionResolver</span><span class="o">(</span><span class="k">new</span> <span class="nc">StandardBeanExpressionResolver</span><span class="o">(</span><span class="n">beanFactory</span><span class="o">.</span><span class="na">getBeanClassLoader</span><span class="o">()));</span>
+    <span class="n">beanFactory</span><span class="o">.</span><span class="na">addPropertyEditorRegistrar</span><span class="o">(</span><span class="k">new</span> <span class="nc">ResourceEditorRegistrar</span><span class="o">(</span><span class="k">this</span><span class="o">,</span> <span class="n">getEnvironment</span><span class="o">()));</span>
+
+    <span class="c1">// 添加BeanPostProcessor</span>
+    <span class="n">beanFactory</span><span class="o">.</span><span class="na">addBeanPostProcessor</span><span class="o">(</span><span class="k">new</span> <span class="nc">ApplicationContextAwareProcessor</span><span class="o">(</span><span class="k">this</span><span class="o">));</span>
+    <span class="n">beanFactory</span><span class="o">.</span><span class="na">ignoreDependencyInterface</span><span class="o">(</span><span class="nc">EnvironmentAware</span><span class="o">.</span><span class="na">class</span><span class="o">);</span>
+    <span class="n">beanFactory</span><span class="o">.</span><span class="na">ignoreDependencyInterface</span><span class="o">(</span><span class="nc">EmbeddedValueResolverAware</span><span class="o">.</span><span class="na">class</span><span class="o">);</span>
+	<span class="c1">// ......</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</pre></table></code></div></div><h3 id="注册并实例化bean工厂发布处理器并调用他们">注册并实例化bean工厂发布处理器,并调用他们</h3><p>过程主要是工厂发布处理器的创建和调用，逻辑较多</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+</pre><td class="rouge-code"><pre><span class="c1">//// 3.2注册并实例化bean工厂处理器,并调用他们</span>
+<span class="n">invokeBeanFactoryPostProcessors</span><span class="o">(</span><span class="n">beanFactory</span><span class="o">);</span>
+
+<span class="kd">protected</span> <span class="kt">void</span> <span class="nf">invokeBeanFactoryPostProcessors</span><span class="o">(</span><span class="nc">ConfigurableListableBeanFactory</span> <span class="n">beanFactory</span><span class="o">)</span> <span class="o">{</span>
+    <span class="nc">PostProcessorRegistrationDelegate</span><span class="o">.</span><span class="na">invokeBeanFactoryPostProcessors</span><span class="o">(</span><span class="n">beanFactory</span><span class="o">,</span> <span class="n">getBeanFactoryPostProcessors</span><span class="o">());</span>
+    <span class="c1">// ......</span>
+<span class="o">}</span>
+
+<span class="c1">// PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors</span>
+<span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">invokeBeanFactoryPostProcessors</span><span class="o">(</span>
+			<span class="nc">ConfigurableListableBeanFactory</span> <span class="n">beanFactory</span><span class="o">,</span> <span class="nc">List</span><span class="o">&lt;</span><span class="nc">BeanFactoryPostProcessor</span><span class="o">&gt;</span> <span class="n">beanFactoryPostProcessors</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">postProcessorNames</span> <span class="o">=</span> <span class="n">beanFactory</span><span class="o">.</span><span class="na">getBeanNamesForType</span><span class="o">(</span><span class="nc">BeanDefinitionRegistryPostProcessor</span><span class="o">.</span><span class="na">class</span><span class="o">,</span> <span class="kc">true</span><span class="o">,</span> <span class="kc">false</span><span class="o">);</span>
+        <span class="k">for</span> <span class="o">(</span><span class="nc">String</span> <span class="n">ppName</span> <span class="o">:</span> <span class="n">postProcessorNames</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">if</span> <span class="o">(!</span><span class="n">processedBeans</span><span class="o">.</span><span class="na">contains</span><span class="o">(</span><span class="n">ppName</span><span class="o">)</span> <span class="o">&amp;&amp;</span> <span class="n">beanFactory</span><span class="o">.</span><span class="na">isTypeMatch</span><span class="o">(</span><span class="n">ppName</span><span class="o">,</span> <span class="nc">Ordered</span><span class="o">.</span><span class="na">class</span><span class="o">))</span> <span class="o">{</span>
+                <span class="c1">// 创建BeanDefinitionRegistryPostProcessor处理器</span>
+                <span class="n">currentRegistryProcessors</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">beanFactory</span><span class="o">.</span><span class="na">getBean</span><span class="o">(</span><span class="n">ppName</span><span class="o">,</span> <span class="nc">BeanDefinitionRegistryPostProcessor</span><span class="o">.</span><span class="na">class</span><span class="o">));</span>
+                <span class="n">processedBeans</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">ppName</span><span class="o">);</span>
+            <span class="o">}</span>
+        <span class="o">}</span>
+    	<span class="c1">// 调用这些处理器</span>
+        <span class="n">invokeBeanDefinitionRegistryPostProcessors</span><span class="o">(</span><span class="n">currentRegistryProcessors</span><span class="o">,</span> <span class="n">registry</span><span class="o">);</span>
+    	<span class="c1">// ...</span>
+
+<span class="o">}</span>
+
+<span class="c1">// 循环调用</span>
+<span class="kd">private</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">invokeBeanDefinitionRegistryPostProcessors</span><span class="o">(</span>
+			<span class="nc">Collection</span><span class="o">&lt;?</span> <span class="kd">extends</span> <span class="nc">BeanDefinitionRegistryPostProcessor</span><span class="o">&gt;</span> <span class="n">postProcessors</span><span class="o">,</span> <span class="nc">BeanDefinitionRegistry</span> <span class="n">registry</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">for</span> <span class="o">(</span><span class="nc">BeanDefinitionRegistryPostProcessor</span> <span class="n">postProcessor</span> <span class="o">:</span> <span class="n">postProcessors</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">postProcessor</span><span class="o">.</span><span class="na">postProcessBeanDefinitionRegistry</span><span class="o">(</span><span class="n">registry</span><span class="o">);</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</pre></table></code></div></div><p>BeanDefinitionRegistryPostProcessor的子类对象在此处创建并调<code class="language-plaintext highlighter-rouge">postProcessBeanDefinitionRegistry</code>方法。</p><p>其中<code class="language-plaintext highlighter-rouge">org.springframework.context.annotation.ConfigurationClassPostProcessor</code>就是BeanDefinitionRegistryPostProcessor的子类，是一个spring的类解析器，扫描包下所有的类，解析出bean类，注册到bean工厂由此类主要参与，其中有不少递归</p><h3 id="注册并实例化bean发布处理器">注册并实例化bean发布处理器</h3><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+</pre><td class="rouge-code"><pre><span class="c1">//// 3.3注册并实例化bean处理器</span>
+<span class="n">registerBeanPostProcessors</span><span class="o">(</span><span class="n">beanFactory</span><span class="o">);</span>
+</pre></table></code></div></div><p>BeanFactoryPostProcessors 和 BeanPostProcessors是有区别的</p><p>BeanFactoryPostProcessors 是工厂发布处理器，定义什么是bean，知道哪些是bean类，解析class文件，包括注解解析，成员对象依赖解析等；BeanPostProcessors主要在BeanFactoryPostProcessors调用完之后工作</p><p>一般在bean对像的创建之前或之后，BeanFactory调用这些bean处理器拦截处理，Spring代理对象的创建也是通过beanPostProcessor处理器来实现</p><h4 id="bean发布处理器生产aop代理对象">bean发布处理器生产AOP代理对象</h4><p>AnnotationAwareAspectJAutoProxyCreator实现了BeanPostProcessors，在bean被工厂创建之后，BeanFactory调用拦截器的postProcessAfterInitialization做拦截处理。此拦截器处理器实际执行的是父类<code class="language-plaintext highlighter-rouge">org.springframework.aop.framework.autoproxy.AbstractAutoProxyCreator</code>的方法</p><p>比如一个UserServiceImp类有@service注解，并且有切点Aspectj注解增强方法，bean工厂创建userServiceImp后，代理拦截器检测到AOP相关注解，会创建动态代理对象userServiceImp$$EnhancerBySpringCGLIB并返代理对象，而不是返回userServiceImp</p><p>Spring工厂部分bean创建拦截代码逻辑</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+</pre><td class="rouge-code"><pre><span class="c1">// org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.initializeBean(String, Object, RootBeanDefinition)</span>
+<span class="c1">// bean初始化</span>
+<span class="kd">protected</span> <span class="nc">Object</span> <span class="nf">initializeBean</span><span class="o">(</span><span class="nc">String</span> <span class="n">beanName</span><span class="o">,</span> <span class="nc">Object</span> <span class="n">bean</span><span class="o">,</span> <span class="nd">@Nullable</span> <span class="nc">RootBeanDefinition</span> <span class="n">mbd</span><span class="o">)</span> <span class="o">{</span>
+    <span class="n">invokeAwareMethods</span><span class="o">(</span><span class="n">beanName</span><span class="o">,</span> <span class="n">bean</span><span class="o">);</span>
+    <span class="nc">Object</span> <span class="n">wrappedBean</span> <span class="o">=</span> <span class="n">bean</span><span class="o">;</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">mbd</span> <span class="o">==</span> <span class="kc">null</span> <span class="o">||</span> <span class="o">!</span><span class="n">mbd</span><span class="o">.</span><span class="na">isSynthetic</span><span class="o">())</span> <span class="o">{</span>
+        <span class="c1">// 初始化之前，拦截</span>
+        <span class="n">wrappedBean</span> <span class="o">=</span> <span class="n">applyBeanPostProcessorsBeforeInitialization</span><span class="o">(</span><span class="n">wrappedBean</span><span class="o">,</span> <span class="n">beanName</span><span class="o">);</span>
+    <span class="o">}</span>
+    <span class="n">invokeInitMethods</span><span class="o">(</span><span class="n">beanName</span><span class="o">,</span> <span class="n">wrappedBean</span><span class="o">,</span> <span class="n">mbd</span><span class="o">);</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">mbd</span> <span class="o">==</span> <span class="kc">null</span> <span class="o">||</span> <span class="o">!</span><span class="n">mbd</span><span class="o">.</span><span class="na">isSynthetic</span><span class="o">())</span> <span class="o">{</span>
+        <span class="c1">// 初始化之后拦截</span>
+        <span class="n">wrappedBean</span> <span class="o">=</span> <span class="n">applyBeanPostProcessorsAfterInitialization</span><span class="o">(</span><span class="n">wrappedBean</span><span class="o">,</span> <span class="n">beanName</span><span class="o">);</span>
+    <span class="o">}</span>
+    <span class="k">return</span> <span class="n">wrappedBean</span><span class="o">;</span>
+<span class="o">}</span>
+
+<span class="nd">@Override</span>
+<span class="kd">public</span> <span class="nc">Object</span> <span class="nf">applyBeanPostProcessorsAfterInitialization</span><span class="o">(</span><span class="nc">Object</span> <span class="n">existingBean</span><span class="o">,</span> <span class="nc">String</span> <span class="n">beanName</span><span class="o">)</span>
+    <span class="kd">throws</span> <span class="nc">BeansException</span> <span class="o">{</span>
+    <span class="nc">Object</span> <span class="n">result</span> <span class="o">=</span> <span class="n">existingBean</span><span class="o">;</span>
+    <span class="k">for</span> <span class="o">(</span><span class="nc">BeanPostProcessor</span> <span class="n">processor</span> <span class="o">:</span> <span class="n">getBeanPostProcessors</span><span class="o">())</span> <span class="o">{</span>
+        <span class="c1">// 循环bean发布处理器调用postProcessAfterInitialization方法  </span>
+        <span class="nc">Object</span> <span class="n">current</span> <span class="o">=</span> <span class="n">processor</span><span class="o">.</span><span class="na">postProcessAfterInitialization</span><span class="o">(</span><span class="n">result</span><span class="o">,</span> <span class="n">beanName</span><span class="o">);</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">current</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="n">result</span><span class="o">;</span>
+        <span class="o">}</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">current</span><span class="o">;</span>
+    <span class="o">}</span>
+    <span class="k">return</span> <span class="n">result</span><span class="o">;</span>
+<span class="o">}</span>
+</pre></table></code></div></div><p>AbstractAutoProxyCreator在此循环中被调用，比如在userServiceImp服务类上有事务注解@Transactional，一般就会被拦截生成代理对象，添加额外的处理事务的功能代码，返回增强的代理对象</p><h3 id="初始化一些与上下文有特别关系的bean对象">初始化一些与上下文有特别关系的bean对象</h3><p>默认tomcat服务器的创建就是此方法完成，此处定义特别的bean创建，一般是服务器有关或个性化对象，</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+</pre><td class="rouge-code"><pre><span class="c1">//// 3.4 初始化一些与上下文有特别关系的bean对象</span>
+<span class="n">onRefresh</span><span class="o">();</span>
+
+<span class="c1">// org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext</span>
+<span class="c1">// 子类context重写</span>
+<span class="nd">@Override</span>
+<span class="kd">protected</span> <span class="kt">void</span> <span class="nf">onRefresh</span><span class="o">()</span> <span class="o">{</span>
+    <span class="kd">super</span><span class="o">.</span><span class="na">onRefresh</span><span class="o">();</span>
+    <span class="k">try</span> <span class="o">{</span>
+        <span class="n">createWebServer</span><span class="o">();</span> <span class="c1">//创建服务器</span>
+    <span class="o">}</span>
+    <span class="k">catch</span> <span class="o">(</span><span class="nc">Throwable</span> <span class="n">ex</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">throw</span> <span class="k">new</span> <span class="nf">ApplicationContextException</span><span class="o">(</span><span class="s">"Unable to start web server"</span><span class="o">,</span> <span class="n">ex</span><span class="o">);</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+
+<span class="kd">private</span> <span class="kt">void</span> <span class="nf">createWebServer</span><span class="o">()</span> <span class="o">{</span>
+    <span class="nc">WebServer</span> <span class="n">webServer</span> <span class="o">=</span> <span class="k">this</span><span class="o">.</span><span class="na">webServer</span><span class="o">;</span>
+    <span class="nc">ServletContext</span> <span class="n">servletContext</span> <span class="o">=</span> <span class="n">getServletContext</span><span class="o">();</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">webServer</span> <span class="o">==</span> <span class="kc">null</span> <span class="o">&amp;&amp;</span> <span class="n">servletContext</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+        <span class="nc">ServletWebServerFactory</span> <span class="n">factory</span> <span class="o">=</span> <span class="n">getWebServerFactory</span><span class="o">();</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">webServer</span> <span class="o">=</span> <span class="n">factory</span><span class="o">.</span><span class="na">getWebServer</span><span class="o">(</span><span class="n">getSelfInitializer</span><span class="o">());</span> 
+        <span class="c1">// 默认创建tomcat服务器</span>
+        <span class="c1">// org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory.getWebServer()</span>
+    <span class="o">}</span>
+    <span class="c1">// ......</span>
+    <span class="n">initPropertySources</span><span class="o">();</span>
+<span class="o">}</span>
+</pre></table></code></div></div><h3 id="实例化所有bean工厂缓存的bean对象">实例化所有bean工厂缓存的bean对象</h3><p>服务器启动后，创建spring工厂里面缓存的bean信息（没有被创建的单例）</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+</pre><td class="rouge-code"><pre><span class="c1">//// 3.5 实例化所有bean工厂缓存的bean对象（剩下的）.</span>
+<span class="n">finishBeanFactoryInitialization</span><span class="o">(</span><span class="n">beanFactory</span><span class="o">);</span>
+
+<span class="kd">protected</span> <span class="kt">void</span> <span class="nf">finishBeanFactoryInitialization</span><span class="o">(</span><span class="nc">ConfigurableListableBeanFactory</span> <span class="n">beanFactory</span><span class="o">)</span> <span class="o">{</span>
+    <span class="c1">// ......</span>
+    <span class="c1">// Instantiate all remaining (non-lazy-init) singletons.</span>
+    <span class="n">beanFactory</span><span class="o">.</span><span class="na">preInstantiateSingletons</span><span class="o">();</span>
+<span class="o">}</span>
+
+<span class="c1">// 子类org.springframework.beans.factory.support.DefaultListableBeanFactory实现方法，完成剩下的单例bean对象创建</span>
+<span class="nd">@Override</span>
+<span class="kd">public</span> <span class="kt">void</span> <span class="nf">preInstantiateSingletons</span><span class="o">()</span> <span class="kd">throws</span> <span class="nc">BeansException</span> <span class="o">{</span>
+    <span class="nc">List</span><span class="o">&lt;</span><span class="nc">String</span><span class="o">&gt;</span> <span class="n">beanNames</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ArrayList</span><span class="o">&lt;&gt;(</span><span class="k">this</span><span class="o">.</span><span class="na">beanDefinitionNames</span><span class="o">);</span>
+    <span class="k">for</span> <span class="o">(</span><span class="nc">String</span> <span class="n">beanName</span> <span class="o">:</span> <span class="n">beanNames</span><span class="o">)</span> <span class="o">{</span>
+        <span class="nc">RootBeanDefinition</span> <span class="n">bd</span> <span class="o">=</span> <span class="n">getMergedLocalBeanDefinition</span><span class="o">(</span><span class="n">beanName</span><span class="o">);</span>
+        <span class="k">if</span> <span class="o">(!</span><span class="n">bd</span><span class="o">.</span><span class="na">isAbstract</span><span class="o">()</span> <span class="o">&amp;&amp;</span> <span class="n">bd</span><span class="o">.</span><span class="na">isSingleton</span><span class="o">()</span> <span class="o">&amp;&amp;</span> <span class="o">!</span><span class="n">bd</span><span class="o">.</span><span class="na">isLazyInit</span><span class="o">())</span> <span class="o">{</span>
+                <span class="n">getBean</span><span class="o">(</span><span class="n">beanName</span><span class="o">);</span> <span class="c1">//创建还没有实例化的bean对象</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+</pre></table></code></div></div><h3 id="发布通知-通知上下文刷新完成">发布通知-通知上下文刷新完成</h3><p>上下文初始化完成之后，启动tomcat服务器</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+</pre><td class="rouge-code"><pre><span class="n">finishRefresh</span><span class="o">();</span>
+
+<span class="c1">// super.finishRefresh</span>
+<span class="kd">protected</span> <span class="kt">void</span> <span class="nf">finishRefresh</span><span class="o">()</span> <span class="o">{</span>
+    <span class="c1">// ...... 发布刷行完成事件</span>
+    <span class="c1">// Publish the final event.</span>
+    <span class="n">publishEvent</span><span class="o">(</span><span class="k">new</span> <span class="nc">ContextRefreshedEvent</span><span class="o">(</span><span class="k">this</span><span class="o">));</span>
+<span class="o">}</span>
+
+<span class="c1">// org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext.finishRefresh()</span>
+<span class="nd">@Override</span>
+<span class="kd">protected</span> <span class="kt">void</span> <span class="nf">finishRefresh</span><span class="o">()</span> <span class="o">{</span>
+    <span class="kd">super</span><span class="o">.</span><span class="na">finishRefresh</span><span class="o">();</span>
+    <span class="nc">WebServer</span> <span class="n">webServer</span> <span class="o">=</span> <span class="n">startWebServer</span><span class="o">();</span><span class="c1">// 启动服务器</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">webServer</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">publishEvent</span><span class="o">(</span><span class="k">new</span> <span class="nc">ServletWebServerInitializedEvent</span><span class="o">(</span><span class="n">webServer</span><span class="o">,</span> <span class="k">this</span><span class="o">));</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+
+</pre></table></code></div></div><h2 id="通知监听者-启动程序完成"><strong>通知监听者-启动程序完成</strong></h2><p>发布通知监听器启动完成，监听器会根据事件类型做个性化操作</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+</pre><td class="rouge-code"><pre><span class="n">listeners</span><span class="o">.</span><span class="na">started</span><span class="o">(</span><span class="n">context</span><span class="o">);</span>
+<span class="n">listeners</span><span class="o">.</span><span class="na">running</span><span class="o">(</span><span class="n">context</span><span class="o">);</span>
+
+<span class="kt">void</span> <span class="nf">started</span><span class="o">(</span><span class="nc">ConfigurableApplicationContext</span> <span class="n">context</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">for</span> <span class="o">(</span><span class="nc">SpringApplicationRunListener</span> <span class="n">listener</span> <span class="o">:</span> <span class="k">this</span><span class="o">.</span><span class="na">listeners</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">listener</span><span class="o">.</span><span class="na">started</span><span class="o">(</span><span class="n">context</span><span class="o">);</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+
+<span class="kt">void</span> <span class="nf">running</span><span class="o">(</span><span class="nc">ConfigurableApplicationContext</span> <span class="n">context</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">for</span> <span class="o">(</span><span class="nc">SpringApplicationRunListener</span> <span class="n">listener</span> <span class="o">:</span> <span class="k">this</span><span class="o">.</span><span class="na">listeners</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">listener</span><span class="o">.</span><span class="na">running</span><span class="o">(</span><span class="n">context</span><span class="o">);</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+
+<span class="nd">@Override</span>
+<span class="kd">public</span> <span class="kt">void</span> <span class="nf">started</span><span class="o">(</span><span class="nc">ConfigurableApplicationContext</span> <span class="n">context</span><span class="o">)</span> <span class="o">{</span>
+    <span class="n">context</span><span class="o">.</span><span class="na">publishEvent</span><span class="o">(</span><span class="k">new</span> <span class="nc">ApplicationStartedEvent</span><span class="o">(</span><span class="k">this</span><span class="o">.</span><span class="na">application</span><span class="o">,</span> <span class="k">this</span><span class="o">.</span><span class="na">args</span><span class="o">,</span> <span class="n">context</span><span class="o">));</span>
+<span class="o">}</span>
+
+<span class="nd">@Override</span>
+<span class="kd">public</span> <span class="kt">void</span> <span class="nf">running</span><span class="o">(</span><span class="nc">ConfigurableApplicationContext</span> <span class="n">context</span><span class="o">)</span> <span class="o">{</span>
+    <span class="n">context</span><span class="o">.</span><span class="na">publishEvent</span><span class="o">(</span><span class="k">new</span> <span class="nc">ApplicationReadyEvent</span><span class="o">(</span><span class="k">this</span><span class="o">.</span><span class="na">application</span><span class="o">,</span> <span class="k">this</span><span class="o">.</span><span class="na">args</span><span class="o">,</span> <span class="n">context</span><span class="o">));</span>
+<span class="o">}</span>
+</pre></table></code></div></div><p>不定期更新…</p></div><div class="post-tail-wrapper text-muted"><div class="post-meta mb-3"> <i class="far fa-folder-open fa-fw mr-1"></i> <a href='/categories/technology-%E6%8A%80%E6%9C%AF/'>Technology^技术</a>, <a href='/categories/java/'>Java</a>, <a href='/categories/spring/'>Spring</a></div><div class="post-tags"> <i class="fa fa-tags fa-fw mr-1"></i> <a href="/tags/writing/" class="post-tag no-text-decoration" >writing</a> <a href="/tags/java/" class="post-tag no-text-decoration" >Java</a> <a href="/tags/spring/" class="post-tag no-text-decoration" >Spring</a></div><div class="post-tail-bottom d-flex justify-content-between align-items-center mt-3 pt-5 pb-2"><div class="license-wrapper"> This post is licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a> by the author.</div><div class="share-wrapper"> <span class="share-label text-muted mr-1">Share</span> <span class="share-icons"> <a href="https://twitter.com/intent/tweet?text=SpringBoot-启动流程 - Narule&url=https://narule.github.io/posts/SpringBoot-%E5%90%AF%E5%8A%A8%E6%B5%81%E7%A8%8B/" data-toggle="tooltip" data-placement="top" title="Twitter" target="_blank" rel="noopener" aria-label="Twitter"> <i class="fa-fw fab fa-twitter"></i> </a> <a href="https://www.facebook.com/sharer/sharer.php?title=SpringBoot-启动流程 - Narule&u=https://narule.github.io/posts/SpringBoot-%E5%90%AF%E5%8A%A8%E6%B5%81%E7%A8%8B/" data-toggle="tooltip" data-placement="top" title="Facebook" target="_blank" rel="noopener" aria-label="Facebook"> <i class="fa-fw fab fa-facebook-square"></i> </a> <a href="https://telegram.me/share?text=SpringBoot-启动流程 - Narule&url=https://narule.github.io/posts/SpringBoot-%E5%90%AF%E5%8A%A8%E6%B5%81%E7%A8%8B/" data-toggle="tooltip" data-placement="top" title="Telegram" target="_blank" rel="noopener" aria-label="Telegram"> <i class="fa-fw fab fa-telegram"></i> </a> <i class="fa-fw fas fa-link small" onclick="copyLink()" data-toggle="tooltip" data-placement="top" title="Copy link"></i> </span></div></div></div></div></div><div id="panel-wrapper" class="col-xl-3 pl-2 text-muted topbar-down"><div class="access"><div id="access-lastmod" class="post"> <span>Recent Update</span><ul class="post-content pl-0 pb-1 ml-1 mt-2"><li><a href="/posts/%E4%BA%92%E8%81%94%E7%BD%91%E5%A4%87%E5%BF%98%E5%BD%95/">互联网备忘录</a><li><a href="/posts/%E7%94%A8%E6%88%B7%E6%8C%87%E7%BA%B9/">用户指纹</a><li><a href="/posts/%E5%85%B3%E4%BA%8Enetty/">关于netty</a><li><a href="/posts/%E8%87%AA%E5%8A%A8%E6%9B%B4%E6%96%B0%E5%8D%9A%E5%AE%A2%E7%9A%84%E8%AE%BE%E8%AE%A1-The-design-of-an-automatically-updated-blog/">The design of an automatically updated blog | 自动更新博客的设计</a><li><a href="/posts/AbstractQueuedSynchronizer%E6%8A%BD%E8%B1%A1%E7%B1%BB-%E9%98%BB%E5%A1%9E%E9%94%81/">AbstractQueuedSynchronizer抽象类-阻塞锁</a></ul></div><div id="access-tags"> <span>Trending Tags</span><div class="d-flex flex-wrap mt-3 mb-1 mr-3"> <a class="post-tag" href="/tags/writing/">writing</a> <a class="post-tag" href="/tags/java/">Java</a> <a class="post-tag" href="/tags/think/">Think</a> <a class="post-tag" href="/tags/algorithm/">Algorithm</a> <a class="post-tag" href="/tags/docker/">docker</a> <a class="post-tag" href="/tags/spring/">Spring</a> <a class="post-tag" href="/tags/website/">website</a> <a class="post-tag" href="/tags/linux/">Linux</a> <a class="post-tag" href="/tags/map/">map</a> <a class="post-tag" href="/tags/nginx/">nginx</a></div></div></div><div id="toc-wrapper" class="pl-0 pr-4 mb-5"> <span class="pl-3 pt-2 mb-2">Contents</span><nav id="toc" data-toggle="toc"></nav></div></div></div><div class="row"><div class="col-12 col-lg-11 col-xl-8"><div id="post-extend-wrapper" class="pl-1 pr-1 pl-sm-2 pr-sm-2 pl-md-4 pr-md-4"><div id="related-posts" class="mt-5 mb-2 mb-sm-4"><h3 class="pt-2 mt-1 mb-4 ml-1" data-toc-skip>Further Reading</h3><div class="card-deck mb-4"><div class="card"> <a href="/posts/SpringCloud-ServerConfig/"><div class="card-body"> <span class="timeago small" > Apr 23, 2020 <i class="unloaded">2020-04-23T20:10:00+08:00</i> </span><h3 class="pt-0 mt-1 mb-3" data-toc-skip>SpringCloud-ServerConfig</h3><div class="text-muted small"><p> ServerConfig SpringCloud 组件，ServerConfig 是配置服务中心，组件，用于统一管理项目配置’’ 原理 读取配置文件内容到服务中心 通过启动一个springboot服务（server-config），配置好git仓库地址（也可以svn或者其他），通过配置好的文件地址，访问配置文件，将配置读取到服务中心，并且文件内容修改后，可以实时刷新。 客户端...</p></div></div></a></div><div class="card"> <a href="/posts/SpringCloud-%E5%B8%B8%E7%94%A8%E7%BB%84%E4%BB%B6%E4%BB%8B%E7%BB%8D/"><div class="card-body"> <span class="timeago small" > Jan 31, 2021 <i class="unloaded">2021-01-31T22:12:00+08:00</i> </span><h3 class="pt-0 mt-1 mb-3" data-toc-skip>SpringCloud-常用组件介绍</h3><div class="text-muted small"><p> 分布式系统开发用于分布式环境（多个服务器不在同一个机房，同一个业务服务在多台服务器运行） Spring Cloud 是基于Springboot的分布式云服务架构，SpringCloud的设计就是为了分布式的云环境设计 下面说一些SpringCloud项目在开发中常用的几个组件 说组件之前，将一些分布式相关的概念 CAP定理 指分区容错性 服务可用性 数据一致性，分布式环境： ...</p></div></div></a></div><div class="card"> <a href="/posts/AbstractQueuedSynchronizer%E6%8A%BD%E8%B1%A1%E7%B1%BB-%E9%98%BB%E5%A1%9E%E9%94%81/"><div class="card-body"> <span class="timeago small" > Mar 20, 2021 <i class="unloaded">2021-03-20T00:10:00+08:00</i> </span><h3 class="pt-0 mt-1 mb-3" data-toc-skip>AbstractQueuedSynchronizer抽象类-阻塞锁</h3><div class="text-muted small"><p> AbstractQueuedSynchronizer抽象类-阻塞锁 AbstractQueuedSynchronizer是多线程情况下保证代码快有序运行的一种设计，对多线程获取锁进行了抽象， 设计中包括： 1.线程队列（阻塞的线程） 当很多线程竞争锁的时候，排队一个个获取锁，先进先出 2.线程获取锁，成功就执行后面的代码 3.线程释放锁，如果等待队列中有线程，唤醒队列中的线程 ...</p></div></div></a></div></div></div><div class="post-navigation d-flex justify-content-between"> <a href="/posts/Java%E4%B8%AD%E7%9A%84ReentrantLock%E9%94%81/" class="btn btn-outline-primary"><p>ReentrantLock锁</p></a> <a href="/posts/MyBatis%E7%9A%84%E7%BC%93%E5%AD%98/" class="btn btn-outline-primary"><p>Mybatis的缓存</p></a></div><div id="disqus" class="pt-2 pb-2"><p class="font-italic text-center text-muted small"> Comments powered by <a href="https://disqus.com/">Disqus</a>.</p></div><script src="/assets/js/lib/jquery.disqusloader.min.js"></script> <script> var options = { scriptUrl: '//.disqus.com/embed.js', disqusConfig: function() { this.page.url = 'https://narule.github.io/posts/SpringBoot-%E5%90%AF%E5%8A%A8%E6%B5%81%E7%A8%8B/'; this.page.identifier = '/posts/SpringBoot-%E5%90%AF%E5%8A%A8%E6%B5%81%E7%A8%8B/'; } }; $.disqusLoader('#disqus', options); </script></div></div></div><footer class="d-flex w-100 justify-content-center"><div class="d-flex justify-content-between align-items-center"><div class="footer-left"><p class="mb-0"> © 2025 <a href="https://cnblogs.com/narule">narule</a>. <span data-toggle="tooltip" data-placement="top" title="Except where otherwise noted, the blog posts on this site are licensed under the Creative Commons Attribution 4.0 International (CC BY 4.0) License by the author.">Some rights reserved.</span></p></div><div class="footer-right"><p class="mb-0"> Powered by <a href="https://jekyllrb.com" target="_blank" rel="noopener">Jekyll</a> with <a href="https://github.com/cotes2020/jekyll-theme-chirpy/" target="_blank" rel="noopener">Chirpy</a> theme.</p></div></div></footer></div><div id="search-result-wrapper" class="d-flex justify-content-center unloaded"><div class="col-12 col-xl-11 post-content"><div id="search-hints"><h4 class="text-muted mb-4">Trending Tags</h4><a class="post-tag" href="/tags/writing/">writing</a> <a class="post-tag" href="/tags/java/">Java</a> <a class="post-tag" href="/tags/think/">Think</a> <a class="post-tag" href="/tags/algorithm/">Algorithm</a> <a class="post-tag" href="/tags/docker/">docker</a> <a class="post-tag" href="/tags/spring/">Spring</a> <a class="post-tag" href="/tags/website/">website</a> <a class="post-tag" href="/tags/linux/">Linux</a> <a class="post-tag" href="/tags/map/">map</a> <a class="post-tag" href="/tags/nginx/">nginx</a></div><div id="search-results" class="d-flex flex-wrap justify-content-center text-muted mt-3"></div></div></div></div><div id="mask"></div><a id="back-to-top" href="#" aria-label="back-to-top" class="btn btn-lg btn-box-shadow" role="button"> <i class="fas fa-angle-up"></i> </a> <script src="https://cdn.jsdelivr.net/npm/simple-jekyll-search@1.7.3/dest/simple-jekyll-search.min.js"></script> <script> SimpleJekyllSearch({ searchInput: document.getElementById('search-input'), resultsContainer: document.getElementById('search-results'), json: '/assets/js/data/search.json', searchResultTemplate: '<div class="pl-1 pr-1 pl-sm-2 pr-sm-2 pl-lg-4 pr-lg-4 pl-xl-0 pr-xl-0"> <a href="https://narule.github.io{url}">{title}</a><div class="post-meta d-flex flex-column flex-sm-row text-muted mt-1 mb-1"><div class="mr-sm-4"><i class="far fa-folder fa-fw"></i>{categories}</div><div><i class="fa fa-tag fa-fw"></i>{tags}</div></div><p>{snippet}</p></div>', noResultsText: '<p class="mt-5">Oops! No result founds.</p>' }); </script>

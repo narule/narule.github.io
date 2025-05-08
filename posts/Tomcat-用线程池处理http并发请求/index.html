@@ -1,0 +1,647 @@
+<!DOCTYPE html><html lang="en" ><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no"><meta name="theme" content="Chirpy v2.7.2"><meta name="generator" content="Jekyll v4.2.0" /><meta property="og:title" content="Tomcat用线程池处理http并发请求" /><meta name="author" content="Narule" /><meta property="og:locale" content="en_US" /><meta name="description" content="Tomcat用线程池处理http并发请求 通过了解学习tomcat如何处理并发请求了解到线程池，锁，队列，unsafe类，下面的主要代码来自 java-jre： sun.misc.Unsafe java.util.concurrent.ThreadPoolExecutor java.util.concurrent.ThreadPoolExecutor.Worker java.util.concurrent.locks.AbstractQueuedSynchronizer java.util.concurrent.locks.AbstractQueuedLongSynchronizer java.util.concurrent.LinkedBlockingQueue tomcat: org.apache.tomcat.util.net.NioEndpoint org.apache.tomcat.util.threads.ThreadPoolExecutor org.apache.tomcat.util.threads.TaskThreadFactory org.apache.tomcat.util.threads.TaskQueue ThreadPoolExecutor 是一个线程池实现类，管理线程，减少线程开销，可以用来提高任务执行效率， 构造方法中的参数有 1 2 3 4 5 6 7 8 9 10 public ThreadPoolExecutor( int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, BlockingQueue&lt;Runnable&gt; workQueue, ThreadFactory threadFactory, RejectedExecutionHandler handler) { } corePoolSize 是核心线程数 maximumPoolSize 是最大线程数 keepAliveTime 非核心线程最大空闲时间（超过时间终止） unit 时间单位 workQueue 队列，当任务过多时，先存放在队列 threadFactory 线程工厂，创建线程的工厂 handler 拒绝策略，当任务数过多，队列不能再存放任务时，该如何处理，由此对象去处理。这是个接口，你可以自定义处理方式 ThreadPoolExecutor在Tomcat中http请求的应用 tomcat有一个自己的线程池类：org.apache.tomcat.util.threads.ThreadPoolExecutor，继承原先java.util.concurrent.ThreadPoolExecutor类，此线程池是tomcat用来在接收到远程请求后，将每次请求单独作为一个任务去处理使用，即调用execute(Runnable)，此类重写了execute方法，做了一点功能扩展，有一个功能是为了判断worker数量是否足够，判断不足够时，添加非核心线程worker org.apache.tomcat.util.threads.ThreadPoolExecutor 部分功能扩展代码： 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 private final AtomicInteger submittedCount = new AtomicInteger(0); //提交任务总数 // 重写 execute(Runnable command) public void execute(Runnable command) { execute(command,0,TimeUnit.MILLISECONDS); } public void execute(Runnable command, long timeout, TimeUnit unit) { submittedCount.incrementAndGet(); // 提交任务之前，总数 + 1 try { super.execute(command); } catch (RejectedExecutionException rx) { } } //重写 afterExecute 添加任务完成后的逻辑 @Override protected void afterExecute(Runnable r, Throwable t) { if (!(t instanceof StopPooledThreadException)) { submittedCount.decrementAndGet(); // 完成任务后 总数 -1 } if (t == null) { stopCurrentThreadIfNeeded(); } } 上面是tomcat自己的线程池判断是否需要添加非核心线程关键部分，在workQueue.offer时，会拿submittedCount这个数作为是否添加woker的一个依据。 workQueue.offer见下文 初始化 org.apache.tomcat.util.net.NioEndpoint 创建线程池 NioEndpoint初始化的时候，创建了线程池 1 2 3 4 5 6 7 8 public void createExecutor() { internalExecutor = true; TaskQueue taskqueue = new TaskQueue(); //TaskQueue无界队列，可以一直添加，因此handler 等同于无效 TaskThreadFactory tf = new TaskThreadFactory(getName() + &quot;-exec-&quot;, daemon, getThreadPriority()); executor = new ThreadPoolExecutor(getMinSpareThreads(), getMaxThreads(), 60, TimeUnit.SECONDS,taskqueue, tf); taskqueue.setParent( (ThreadPoolExecutor) executor); } 创建工作线程worker 在线程池创建时，调用prestartAllCoreThreads(), 初始化核心工作线程worker，并启动 1 2 3 4 5 6 public int prestartAllCoreThreads() { int n = 0; while (addWorker(null, true)) ++n; return n; } 当addWorker 数量等于corePoolSize时，addWorker(null,ture)会返回false,停止worker工作线程的创建 addWorker时，会启动worker线程 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 private boolean addWorker(Runnable firstTask, boolean core) { //......省去判断代码（是否需要添加worker的判断） boolean workerStarted = false; boolean workerAdded = false; Worker w = null; try { w = new Worker(firstTask);//1 创建worker线程 final Thread t = w.thread; if (t != null) { final ReentrantLock mainLock = this.mainLock; mainLock.lock(); try { workers.add(w); workerAdded = true; } } finally { mainLock.unlock(); } if (workerAdded) { t.start(); //2 如果worker创建成功，启动这个工作线程 workerStarted = true; //返回true } } } finally { if (! workerStarted) addWorkerFailed(w); } return workerStarted; } 接收任务放入队列 每次客户端过来请求（http），就会提交一次处理任务， poller对象的run方法中开始 -&gt; processKey() -&gt; processSocket() -&gt; executor.execute() 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 //org.apache.tomcat.util.net.NioEndpoint.Poller.run() @Override public void run() { // Loop until destroy() is called while (true) { //............... NioSocketWrapper socketWrapper = (NioSocketWrapper) sk.attachment(); if (socketWrapper != null) { //1调用processKey方法 processKey(sk, socketWrapper); } //............. } } //org.apache.tomcat.util.net.NioEndpoint.Poller.processKey(SelectionKey, NioSocketWrapper) protected void processKey(SelectionKey sk, NioSocketWrapper socketWrapper) { try { //.................... // 2调用processSocket方法 processSocket(socketWrapper, SocketEvent.OPEN_WRITE, true)) //.................. } } //org.apache.tomcat.util.net.AbstractEndpoint.processSocket(SocketWrapperBase&lt;S&gt;, SocketEvent, boolean) public boolean processSocket(SocketWrapperBase&lt;S&gt; socketWrapper, SocketEvent event, boolean dispatch) { try { //............... Executor executor = getExecutor(); if (dispatch &amp;&amp; executor != null) { executor.execute(sc); // 3调用ThreadPoolExecutor.execute提交新请求任务 } else { sc.run(); } //..................... return true; } ThreadPoolExecutor.execute worker 从队列中获取任务运行，下面是将任务放入队列的逻辑代码 ThreadPoolExecutor.execute(Runnable) 提交任务： 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 public void execute(Runnable command) { if (command == null) throw new NullPointerException(); int c = ctl.get(); // worker数 是否小于 核心线程数 tomcat中初始化后，一般不满足第一个条件，不会addWorker if (workerCountOf(c) &lt; corePoolSize) { if (addWorker(command, true)) return; c = ctl.get(); } // workQueue.offer(command)，将任务添加到队列 if (isRunning(c) &amp;&amp; workQueue.offer(command)) { int recheck = ctl.get(); if (! isRunning(recheck) &amp;&amp; remove(command)) reject(command); else if (workerCountOf(recheck) == 0) addWorker(null, false); } else if (!addWorker(command, false)) //workQueue.offer 返回false时，添加非核心线程 reject(command); } workQueue.offer(command) 最终完成了任务的提交(在tomcat处理远程http请求时)。 workQueue.offer TaskQueue 是 BlockingQueue 具体实现类，TaskQueue在offer时，首先会判断一些条件，如果TaskQueue觉得worker数量不够，会添加worker，但不是核心线程； corePoolSize = 10， maximumPoolSize=200 时，并发量小，一般线程数10（核心线程数），若并发非常大，最多也只能创建200个worker线程，190个线程在任务处理完后，闲时状态下会被回收，worker数回到10的数量； workQueue.offer(command)实际代码： 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 //TaskQueue @Override public boolean offer(Runnable o) { if (parent.getSubmittedCount()&lt;=(parent.getPoolSize())) return super.offer(o); if (parent.getPoolSize()&lt;parent.getMaximumPoolSize()) return false; // 当任务提交过多：未处理任务数(SubmittedCount) &gt; 线程数，并且 poolSize &lt; maximumPoolSize // 返回false ThreadPoolExecutor会 addWorker(command, false) 添加worker线程 return super.offer(o); } //super.offer LinkedBlockingQueue public boolean offer(E e) { if (e == null) throw new NullPointerException(); final AtomicInteger count = this.count; if (count.get() == capacity) return false; int c = -1; Node&lt;E&gt; node = new Node&lt;E&gt;(e); final ReentrantLock putLock = this.putLock; putLock.lock(); try { if (count.get() &lt; capacity) { enqueue(node); //此处将任务添加到队列 c = count.getAndIncrement(); if (c + 1 &lt; capacity) notFull.signal(); } } finally { putLock.unlock(); } if (c == 0) signalNotEmpty(); return c &gt;= 0; } // 添加任务到队列 /** * Links node at end of queue. * * @param node the node */ private void enqueue(Node&lt;E&gt; node) { // assert putLock.isHeldByCurrentThread(); // assert last.next == null; last = last.next = node; //链表结构 last.next = node; last = node } 之后是worker的工作，worker在run方法中通过去getTask()获取此处提交的任务，并执行完成任务。 线程池如何处理新提交的任务 添加worker之后，提交任务，因为worker数量达到corePoolSize，任务都会将放入队列，而worker的run方法则是循环获取队列中的任务（不为空时）， worker run方法： 1 2 3 4 /** Delegates main run loop to outer runWorker */ public void run() { runWorker(this); } 循环获取队列中的任务 runWorker(worker)方法 循环部分代码： 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 final void runWorker(Worker w) { Thread wt = Thread.currentThread(); Runnable task = w.firstTask; w.firstTask = null; w.unlock(); // allow interrupts boolean completedAbruptly = true; try { while (task != null || (task = getTask()) != null) { //循环获取队列中的任务 w.lock(); // 上锁 try { // 运行前处理 beforeExecute(wt, task); // 队列中的任务开始执行 task.run(); // 运行后处理 afterExecute(task, thrown); } finally { task = null; w.completedTasks++; w.unlock(); // 释放锁 } } completedAbruptly = false; } finally { processWorkerExit(w, completedAbruptly); } } task.run()执行任务 锁运用 锁用于保证过程的有序，一般一段代码上锁后，同一时间只允许一个线程去操作 ThreadPoolExecutor 使用锁主要保证两件事情， 1.给队列添加任务，释放锁之前，保证其他线程不能操作队列-添加队列任务） 2.获取队列的任务，释放锁之前，保证其他线程不能操作队列-取出队列任务） 在高并发情况下，锁能有效保证请求的有序处理，不至于混乱 给队列添加任务时上锁 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 public boolean offer(E e) { if (e == null) throw new NullPointerException(); final AtomicInteger count = this.count; if (count.get() == capacity) return false; int c = -1; Node&lt;E&gt; node = new Node&lt;E&gt;(e); final ReentrantLock putLock = this.putLock; putLock.lock(); //上锁 try { if (count.get() &lt; capacity) { enqueue(node); c = count.getAndIncrement(); if (c + 1 &lt; capacity) notFull.signal(); } } finally { putLock.unlock(); //释放锁 } if (c == 0) signalNotEmpty(); return c &gt;= 0; } 获取队列任务时上锁 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 private Runnable getTask() { boolean timedOut = false; // Did the last poll() time out? // ...省略 for (;;) { try { Runnable r = timed ? workQueue.poll(keepAliveTime, TimeUnit.NANOSECONDS) : workQueue.take(); //获取队列中一个任务 if (r != null) return r; timedOut = true; } catch (InterruptedException retry) { timedOut = false; } } } public E take() throws InterruptedException { E x; int c = -1; final AtomicInteger count = this.count; final ReentrantLock takeLock = this.takeLock; takeLock.lockInterruptibly(); // 上锁 try { while (count.get() == 0) { notEmpty.await(); //如果队列中没有任务，等待 } x = dequeue(); c = count.getAndDecrement(); if (c &gt; 1) notEmpty.signal(); } finally { takeLock.unlock(); // 释放锁 } if (c == capacity) signalNotFull(); return x; } 其他 volatile 在并发场景这个关键字修饰成员变量很常见， 主要目的公共变量在被某一个线程修改时，对其他线程可见（实时） sun.misc.Unsafe 高并发相关类API 线程池使用中，有平凡用到Unsafe类，这个类在高并发中，能做一些原子CAS操作，锁线程，释放线程等。 sun.misc.Unsafe 类是底层类，openjdk源码中有 原子操作数据 java.util.concurrent.locks.AbstractQueuedSynchronizer 类中就有保证原子操作的代码， 1 2 3 4 protected final boolean compareAndSetState(int expect, int update) { // See below for intrinsics setup to support this return unsafe.compareAndSwapInt(this, stateOffset, expect, update); } 对应Unsafe类的代码: 1 2 3 4 5 6 7 8 9 //对应的java底层，实际是native方法，对应C++代码 /** * Atomically update Java variable to &lt;tt&gt;x&lt;/tt&gt; if it is currently * holding &lt;tt&gt;expected&lt;/tt&gt;. * @return &lt;tt&gt;true&lt;/tt&gt; if successful */ public final native boolean compareAndSwapInt(Object o, long offset, int expected, int x); 方法的作用简单来说就是 更新一个值，保证原子性操作 当你要操作一个对象o的一个成员变量offset时,修改o.offset， 高并发下为保证准确性，你在操作o.offset的时候，读应该是正确的值，并且中间不能被别的线程修改来保证高并发的环境数据操作有效。 即 expected 期望值与内存中的值比较是一样的expected == 内存中的值 ，则更新值为 x，返回true代表修改成功 否则，期望值与内存值不同，说明值被其他线程修改过，不能更新值为x，并返回false，告诉操作者此次原子性修改失败。 注意一下能知道这是locks包下的类，ReentrantLock锁的底层原理就与unsafe类有关，以及下面的park，unpark。线程可以通过这个原子操作放回true或者false的机制，定义自己获取锁成功还是失败。 阻塞和唤醒线程 ThreadPoolExecute设计在请求队列任务为空时，worker线程可以是等待或者中断的（非销毁状态）。 这种做法避免了没必要的循环，节省了硬件资源，提高线程使用效率， 线程池的worker角色循环获取队列任务，如果队列中没有任务，worker.run 还是在等待的，不会退出线程，代码中用了notEmpty.await() 中断此worker线程，放入一个等待线程队列（区别去任务队列）；当有新任务需要时，再notEmpty.signal()唤醒此线程 底层分别是 park unsafe.park() 阻塞(停止)当前线程 public native void park(boolean isAbsolute, long time); unpark unsafe.unpark() 唤醒(取消停止)线程 public native void unpark(Object thread); 这个操作是对应的， 阻塞时，先将thread放入队列,再park， 唤醒时，从队列拿出被阻塞的线程，unpark(thread)唤醒指定线程。 java.util.concurrent.locks.AbstractQueuedLongSynchronizer.ConditionObject 类中 通过链表存放线程信息 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 // 添加一个阻塞线程 private Node addConditionWaiter() { Node t = lastWaiter; // If lastWaiter is cancelled, clean out. if (t != null &amp;&amp; t.waitStatus != Node.CONDITION) { unlinkCancelledWaiters(); t = lastWaiter; } Node node = new Node(Thread.currentThread(), Node.CONDITION); if (t == null) firstWaiter = node; else t.nextWaiter = node; lastWaiter = node; //将新阻塞的线程放到链表尾部 return node; } // 拿出一个被阻塞的线程 public final void signal() { if (!isHeldExclusively()) throw new IllegalMonitorStateException(); Node first = firstWaiter; //链表中第一个阻塞的线程 if (first != null) doSignal(first); } // 拿到后，唤醒此线程 final boolean transferForSignal(Node node) { LockSupport.unpark(node.thread); return true; } public static void unpark(Thread thread) { if (thread != null) UNSAFE.unpark(thread); } 这里要区分park 和 compareAndSwapInt是两个完全不同的东西，可以单独或者组合使用， 比如ReentrantLock实现锁功能这两个都需要" /><meta property="og:description" content="Tomcat用线程池处理http并发请求 通过了解学习tomcat如何处理并发请求了解到线程池，锁，队列，unsafe类，下面的主要代码来自 java-jre： sun.misc.Unsafe java.util.concurrent.ThreadPoolExecutor java.util.concurrent.ThreadPoolExecutor.Worker java.util.concurrent.locks.AbstractQueuedSynchronizer java.util.concurrent.locks.AbstractQueuedLongSynchronizer java.util.concurrent.LinkedBlockingQueue tomcat: org.apache.tomcat.util.net.NioEndpoint org.apache.tomcat.util.threads.ThreadPoolExecutor org.apache.tomcat.util.threads.TaskThreadFactory org.apache.tomcat.util.threads.TaskQueue ThreadPoolExecutor 是一个线程池实现类，管理线程，减少线程开销，可以用来提高任务执行效率， 构造方法中的参数有 1 2 3 4 5 6 7 8 9 10 public ThreadPoolExecutor( int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, BlockingQueue&lt;Runnable&gt; workQueue, ThreadFactory threadFactory, RejectedExecutionHandler handler) { } corePoolSize 是核心线程数 maximumPoolSize 是最大线程数 keepAliveTime 非核心线程最大空闲时间（超过时间终止） unit 时间单位 workQueue 队列，当任务过多时，先存放在队列 threadFactory 线程工厂，创建线程的工厂 handler 拒绝策略，当任务数过多，队列不能再存放任务时，该如何处理，由此对象去处理。这是个接口，你可以自定义处理方式 ThreadPoolExecutor在Tomcat中http请求的应用 tomcat有一个自己的线程池类：org.apache.tomcat.util.threads.ThreadPoolExecutor，继承原先java.util.concurrent.ThreadPoolExecutor类，此线程池是tomcat用来在接收到远程请求后，将每次请求单独作为一个任务去处理使用，即调用execute(Runnable)，此类重写了execute方法，做了一点功能扩展，有一个功能是为了判断worker数量是否足够，判断不足够时，添加非核心线程worker org.apache.tomcat.util.threads.ThreadPoolExecutor 部分功能扩展代码： 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 private final AtomicInteger submittedCount = new AtomicInteger(0); //提交任务总数 // 重写 execute(Runnable command) public void execute(Runnable command) { execute(command,0,TimeUnit.MILLISECONDS); } public void execute(Runnable command, long timeout, TimeUnit unit) { submittedCount.incrementAndGet(); // 提交任务之前，总数 + 1 try { super.execute(command); } catch (RejectedExecutionException rx) { } } //重写 afterExecute 添加任务完成后的逻辑 @Override protected void afterExecute(Runnable r, Throwable t) { if (!(t instanceof StopPooledThreadException)) { submittedCount.decrementAndGet(); // 完成任务后 总数 -1 } if (t == null) { stopCurrentThreadIfNeeded(); } } 上面是tomcat自己的线程池判断是否需要添加非核心线程关键部分，在workQueue.offer时，会拿submittedCount这个数作为是否添加woker的一个依据。 workQueue.offer见下文 初始化 org.apache.tomcat.util.net.NioEndpoint 创建线程池 NioEndpoint初始化的时候，创建了线程池 1 2 3 4 5 6 7 8 public void createExecutor() { internalExecutor = true; TaskQueue taskqueue = new TaskQueue(); //TaskQueue无界队列，可以一直添加，因此handler 等同于无效 TaskThreadFactory tf = new TaskThreadFactory(getName() + &quot;-exec-&quot;, daemon, getThreadPriority()); executor = new ThreadPoolExecutor(getMinSpareThreads(), getMaxThreads(), 60, TimeUnit.SECONDS,taskqueue, tf); taskqueue.setParent( (ThreadPoolExecutor) executor); } 创建工作线程worker 在线程池创建时，调用prestartAllCoreThreads(), 初始化核心工作线程worker，并启动 1 2 3 4 5 6 public int prestartAllCoreThreads() { int n = 0; while (addWorker(null, true)) ++n; return n; } 当addWorker 数量等于corePoolSize时，addWorker(null,ture)会返回false,停止worker工作线程的创建 addWorker时，会启动worker线程 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 private boolean addWorker(Runnable firstTask, boolean core) { //......省去判断代码（是否需要添加worker的判断） boolean workerStarted = false; boolean workerAdded = false; Worker w = null; try { w = new Worker(firstTask);//1 创建worker线程 final Thread t = w.thread; if (t != null) { final ReentrantLock mainLock = this.mainLock; mainLock.lock(); try { workers.add(w); workerAdded = true; } } finally { mainLock.unlock(); } if (workerAdded) { t.start(); //2 如果worker创建成功，启动这个工作线程 workerStarted = true; //返回true } } } finally { if (! workerStarted) addWorkerFailed(w); } return workerStarted; } 接收任务放入队列 每次客户端过来请求（http），就会提交一次处理任务， poller对象的run方法中开始 -&gt; processKey() -&gt; processSocket() -&gt; executor.execute() 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 //org.apache.tomcat.util.net.NioEndpoint.Poller.run() @Override public void run() { // Loop until destroy() is called while (true) { //............... NioSocketWrapper socketWrapper = (NioSocketWrapper) sk.attachment(); if (socketWrapper != null) { //1调用processKey方法 processKey(sk, socketWrapper); } //............. } } //org.apache.tomcat.util.net.NioEndpoint.Poller.processKey(SelectionKey, NioSocketWrapper) protected void processKey(SelectionKey sk, NioSocketWrapper socketWrapper) { try { //.................... // 2调用processSocket方法 processSocket(socketWrapper, SocketEvent.OPEN_WRITE, true)) //.................. } } //org.apache.tomcat.util.net.AbstractEndpoint.processSocket(SocketWrapperBase&lt;S&gt;, SocketEvent, boolean) public boolean processSocket(SocketWrapperBase&lt;S&gt; socketWrapper, SocketEvent event, boolean dispatch) { try { //............... Executor executor = getExecutor(); if (dispatch &amp;&amp; executor != null) { executor.execute(sc); // 3调用ThreadPoolExecutor.execute提交新请求任务 } else { sc.run(); } //..................... return true; } ThreadPoolExecutor.execute worker 从队列中获取任务运行，下面是将任务放入队列的逻辑代码 ThreadPoolExecutor.execute(Runnable) 提交任务： 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 public void execute(Runnable command) { if (command == null) throw new NullPointerException(); int c = ctl.get(); // worker数 是否小于 核心线程数 tomcat中初始化后，一般不满足第一个条件，不会addWorker if (workerCountOf(c) &lt; corePoolSize) { if (addWorker(command, true)) return; c = ctl.get(); } // workQueue.offer(command)，将任务添加到队列 if (isRunning(c) &amp;&amp; workQueue.offer(command)) { int recheck = ctl.get(); if (! isRunning(recheck) &amp;&amp; remove(command)) reject(command); else if (workerCountOf(recheck) == 0) addWorker(null, false); } else if (!addWorker(command, false)) //workQueue.offer 返回false时，添加非核心线程 reject(command); } workQueue.offer(command) 最终完成了任务的提交(在tomcat处理远程http请求时)。 workQueue.offer TaskQueue 是 BlockingQueue 具体实现类，TaskQueue在offer时，首先会判断一些条件，如果TaskQueue觉得worker数量不够，会添加worker，但不是核心线程； corePoolSize = 10， maximumPoolSize=200 时，并发量小，一般线程数10（核心线程数），若并发非常大，最多也只能创建200个worker线程，190个线程在任务处理完后，闲时状态下会被回收，worker数回到10的数量； workQueue.offer(command)实际代码： 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 //TaskQueue @Override public boolean offer(Runnable o) { if (parent.getSubmittedCount()&lt;=(parent.getPoolSize())) return super.offer(o); if (parent.getPoolSize()&lt;parent.getMaximumPoolSize()) return false; // 当任务提交过多：未处理任务数(SubmittedCount) &gt; 线程数，并且 poolSize &lt; maximumPoolSize // 返回false ThreadPoolExecutor会 addWorker(command, false) 添加worker线程 return super.offer(o); } //super.offer LinkedBlockingQueue public boolean offer(E e) { if (e == null) throw new NullPointerException(); final AtomicInteger count = this.count; if (count.get() == capacity) return false; int c = -1; Node&lt;E&gt; node = new Node&lt;E&gt;(e); final ReentrantLock putLock = this.putLock; putLock.lock(); try { if (count.get() &lt; capacity) { enqueue(node); //此处将任务添加到队列 c = count.getAndIncrement(); if (c + 1 &lt; capacity) notFull.signal(); } } finally { putLock.unlock(); } if (c == 0) signalNotEmpty(); return c &gt;= 0; } // 添加任务到队列 /** * Links node at end of queue. * * @param node the node */ private void enqueue(Node&lt;E&gt; node) { // assert putLock.isHeldByCurrentThread(); // assert last.next == null; last = last.next = node; //链表结构 last.next = node; last = node } 之后是worker的工作，worker在run方法中通过去getTask()获取此处提交的任务，并执行完成任务。 线程池如何处理新提交的任务 添加worker之后，提交任务，因为worker数量达到corePoolSize，任务都会将放入队列，而worker的run方法则是循环获取队列中的任务（不为空时）， worker run方法： 1 2 3 4 /** Delegates main run loop to outer runWorker */ public void run() { runWorker(this); } 循环获取队列中的任务 runWorker(worker)方法 循环部分代码： 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 final void runWorker(Worker w) { Thread wt = Thread.currentThread(); Runnable task = w.firstTask; w.firstTask = null; w.unlock(); // allow interrupts boolean completedAbruptly = true; try { while (task != null || (task = getTask()) != null) { //循环获取队列中的任务 w.lock(); // 上锁 try { // 运行前处理 beforeExecute(wt, task); // 队列中的任务开始执行 task.run(); // 运行后处理 afterExecute(task, thrown); } finally { task = null; w.completedTasks++; w.unlock(); // 释放锁 } } completedAbruptly = false; } finally { processWorkerExit(w, completedAbruptly); } } task.run()执行任务 锁运用 锁用于保证过程的有序，一般一段代码上锁后，同一时间只允许一个线程去操作 ThreadPoolExecutor 使用锁主要保证两件事情， 1.给队列添加任务，释放锁之前，保证其他线程不能操作队列-添加队列任务） 2.获取队列的任务，释放锁之前，保证其他线程不能操作队列-取出队列任务） 在高并发情况下，锁能有效保证请求的有序处理，不至于混乱 给队列添加任务时上锁 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 public boolean offer(E e) { if (e == null) throw new NullPointerException(); final AtomicInteger count = this.count; if (count.get() == capacity) return false; int c = -1; Node&lt;E&gt; node = new Node&lt;E&gt;(e); final ReentrantLock putLock = this.putLock; putLock.lock(); //上锁 try { if (count.get() &lt; capacity) { enqueue(node); c = count.getAndIncrement(); if (c + 1 &lt; capacity) notFull.signal(); } } finally { putLock.unlock(); //释放锁 } if (c == 0) signalNotEmpty(); return c &gt;= 0; } 获取队列任务时上锁 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 private Runnable getTask() { boolean timedOut = false; // Did the last poll() time out? // ...省略 for (;;) { try { Runnable r = timed ? workQueue.poll(keepAliveTime, TimeUnit.NANOSECONDS) : workQueue.take(); //获取队列中一个任务 if (r != null) return r; timedOut = true; } catch (InterruptedException retry) { timedOut = false; } } } public E take() throws InterruptedException { E x; int c = -1; final AtomicInteger count = this.count; final ReentrantLock takeLock = this.takeLock; takeLock.lockInterruptibly(); // 上锁 try { while (count.get() == 0) { notEmpty.await(); //如果队列中没有任务，等待 } x = dequeue(); c = count.getAndDecrement(); if (c &gt; 1) notEmpty.signal(); } finally { takeLock.unlock(); // 释放锁 } if (c == capacity) signalNotFull(); return x; } 其他 volatile 在并发场景这个关键字修饰成员变量很常见， 主要目的公共变量在被某一个线程修改时，对其他线程可见（实时） sun.misc.Unsafe 高并发相关类API 线程池使用中，有平凡用到Unsafe类，这个类在高并发中，能做一些原子CAS操作，锁线程，释放线程等。 sun.misc.Unsafe 类是底层类，openjdk源码中有 原子操作数据 java.util.concurrent.locks.AbstractQueuedSynchronizer 类中就有保证原子操作的代码， 1 2 3 4 protected final boolean compareAndSetState(int expect, int update) { // See below for intrinsics setup to support this return unsafe.compareAndSwapInt(this, stateOffset, expect, update); } 对应Unsafe类的代码: 1 2 3 4 5 6 7 8 9 //对应的java底层，实际是native方法，对应C++代码 /** * Atomically update Java variable to &lt;tt&gt;x&lt;/tt&gt; if it is currently * holding &lt;tt&gt;expected&lt;/tt&gt;. * @return &lt;tt&gt;true&lt;/tt&gt; if successful */ public final native boolean compareAndSwapInt(Object o, long offset, int expected, int x); 方法的作用简单来说就是 更新一个值，保证原子性操作 当你要操作一个对象o的一个成员变量offset时,修改o.offset， 高并发下为保证准确性，你在操作o.offset的时候，读应该是正确的值，并且中间不能被别的线程修改来保证高并发的环境数据操作有效。 即 expected 期望值与内存中的值比较是一样的expected == 内存中的值 ，则更新值为 x，返回true代表修改成功 否则，期望值与内存值不同，说明值被其他线程修改过，不能更新值为x，并返回false，告诉操作者此次原子性修改失败。 注意一下能知道这是locks包下的类，ReentrantLock锁的底层原理就与unsafe类有关，以及下面的park，unpark。线程可以通过这个原子操作放回true或者false的机制，定义自己获取锁成功还是失败。 阻塞和唤醒线程 ThreadPoolExecute设计在请求队列任务为空时，worker线程可以是等待或者中断的（非销毁状态）。 这种做法避免了没必要的循环，节省了硬件资源，提高线程使用效率， 线程池的worker角色循环获取队列任务，如果队列中没有任务，worker.run 还是在等待的，不会退出线程，代码中用了notEmpty.await() 中断此worker线程，放入一个等待线程队列（区别去任务队列）；当有新任务需要时，再notEmpty.signal()唤醒此线程 底层分别是 park unsafe.park() 阻塞(停止)当前线程 public native void park(boolean isAbsolute, long time); unpark unsafe.unpark() 唤醒(取消停止)线程 public native void unpark(Object thread); 这个操作是对应的， 阻塞时，先将thread放入队列,再park， 唤醒时，从队列拿出被阻塞的线程，unpark(thread)唤醒指定线程。 java.util.concurrent.locks.AbstractQueuedLongSynchronizer.ConditionObject 类中 通过链表存放线程信息 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 // 添加一个阻塞线程 private Node addConditionWaiter() { Node t = lastWaiter; // If lastWaiter is cancelled, clean out. if (t != null &amp;&amp; t.waitStatus != Node.CONDITION) { unlinkCancelledWaiters(); t = lastWaiter; } Node node = new Node(Thread.currentThread(), Node.CONDITION); if (t == null) firstWaiter = node; else t.nextWaiter = node; lastWaiter = node; //将新阻塞的线程放到链表尾部 return node; } // 拿出一个被阻塞的线程 public final void signal() { if (!isHeldExclusively()) throw new IllegalMonitorStateException(); Node first = firstWaiter; //链表中第一个阻塞的线程 if (first != null) doSignal(first); } // 拿到后，唤醒此线程 final boolean transferForSignal(Node node) { LockSupport.unpark(node.thread); return true; } public static void unpark(Thread thread) { if (thread != null) UNSAFE.unpark(thread); } 这里要区分park 和 compareAndSwapInt是两个完全不同的东西，可以单独或者组合使用， 比如ReentrantLock实现锁功能这两个都需要" /><link rel="canonical" href="https://narule.github.io/posts/Tomcat-%E7%94%A8%E7%BA%BF%E7%A8%8B%E6%B1%A0%E5%A4%84%E7%90%86http%E5%B9%B6%E5%8F%91%E8%AF%B7%E6%B1%82/" /><meta property="og:url" content="https://narule.github.io/posts/Tomcat-%E7%94%A8%E7%BA%BF%E7%A8%8B%E6%B1%A0%E5%A4%84%E7%90%86http%E5%B9%B6%E5%8F%91%E8%AF%B7%E6%B1%82/" /><meta property="og:site_name" content="Narule" /><meta property="og:type" content="article" /><meta property="article:published_time" content="2020-12-23T22:10:00+08:00" /><meta name="twitter:card" content="summary" /><meta property="twitter:title" content="Tomcat用线程池处理http并发请求" /><meta name="twitter:site" content="@no_twitter" /><meta name="twitter:creator" content="@Narule" /><meta name="google-site-verification" content="google_meta_tag_verification" /> <script type="application/ld+json"> {"description":"Tomcat用线程池处理http并发请求 通过了解学习tomcat如何处理并发请求了解到线程池，锁，队列，unsafe类，下面的主要代码来自 java-jre： sun.misc.Unsafe java.util.concurrent.ThreadPoolExecutor java.util.concurrent.ThreadPoolExecutor.Worker java.util.concurrent.locks.AbstractQueuedSynchronizer java.util.concurrent.locks.AbstractQueuedLongSynchronizer java.util.concurrent.LinkedBlockingQueue tomcat: org.apache.tomcat.util.net.NioEndpoint org.apache.tomcat.util.threads.ThreadPoolExecutor org.apache.tomcat.util.threads.TaskThreadFactory org.apache.tomcat.util.threads.TaskQueue ThreadPoolExecutor 是一个线程池实现类，管理线程，减少线程开销，可以用来提高任务执行效率， 构造方法中的参数有 1 2 3 4 5 6 7 8 9 10 public ThreadPoolExecutor( int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, BlockingQueue&lt;Runnable&gt; workQueue, ThreadFactory threadFactory, RejectedExecutionHandler handler) { } corePoolSize 是核心线程数 maximumPoolSize 是最大线程数 keepAliveTime 非核心线程最大空闲时间（超过时间终止） unit 时间单位 workQueue 队列，当任务过多时，先存放在队列 threadFactory 线程工厂，创建线程的工厂 handler 拒绝策略，当任务数过多，队列不能再存放任务时，该如何处理，由此对象去处理。这是个接口，你可以自定义处理方式 ThreadPoolExecutor在Tomcat中http请求的应用 tomcat有一个自己的线程池类：org.apache.tomcat.util.threads.ThreadPoolExecutor，继承原先java.util.concurrent.ThreadPoolExecutor类，此线程池是tomcat用来在接收到远程请求后，将每次请求单独作为一个任务去处理使用，即调用execute(Runnable)，此类重写了execute方法，做了一点功能扩展，有一个功能是为了判断worker数量是否足够，判断不足够时，添加非核心线程worker org.apache.tomcat.util.threads.ThreadPoolExecutor 部分功能扩展代码： 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 private final AtomicInteger submittedCount = new AtomicInteger(0); //提交任务总数 // 重写 execute(Runnable command) public void execute(Runnable command) { execute(command,0,TimeUnit.MILLISECONDS); } public void execute(Runnable command, long timeout, TimeUnit unit) { submittedCount.incrementAndGet(); // 提交任务之前，总数 + 1 try { super.execute(command); } catch (RejectedExecutionException rx) { } } //重写 afterExecute 添加任务完成后的逻辑 @Override protected void afterExecute(Runnable r, Throwable t) { if (!(t instanceof StopPooledThreadException)) { submittedCount.decrementAndGet(); // 完成任务后 总数 -1 } if (t == null) { stopCurrentThreadIfNeeded(); } } 上面是tomcat自己的线程池判断是否需要添加非核心线程关键部分，在workQueue.offer时，会拿submittedCount这个数作为是否添加woker的一个依据。 workQueue.offer见下文 初始化 org.apache.tomcat.util.net.NioEndpoint 创建线程池 NioEndpoint初始化的时候，创建了线程池 1 2 3 4 5 6 7 8 public void createExecutor() { internalExecutor = true; TaskQueue taskqueue = new TaskQueue(); //TaskQueue无界队列，可以一直添加，因此handler 等同于无效 TaskThreadFactory tf = new TaskThreadFactory(getName() + &quot;-exec-&quot;, daemon, getThreadPriority()); executor = new ThreadPoolExecutor(getMinSpareThreads(), getMaxThreads(), 60, TimeUnit.SECONDS,taskqueue, tf); taskqueue.setParent( (ThreadPoolExecutor) executor); } 创建工作线程worker 在线程池创建时，调用prestartAllCoreThreads(), 初始化核心工作线程worker，并启动 1 2 3 4 5 6 public int prestartAllCoreThreads() { int n = 0; while (addWorker(null, true)) ++n; return n; } 当addWorker 数量等于corePoolSize时，addWorker(null,ture)会返回false,停止worker工作线程的创建 addWorker时，会启动worker线程 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 private boolean addWorker(Runnable firstTask, boolean core) { //......省去判断代码（是否需要添加worker的判断） boolean workerStarted = false; boolean workerAdded = false; Worker w = null; try { w = new Worker(firstTask);//1 创建worker线程 final Thread t = w.thread; if (t != null) { final ReentrantLock mainLock = this.mainLock; mainLock.lock(); try { workers.add(w); workerAdded = true; } } finally { mainLock.unlock(); } if (workerAdded) { t.start(); //2 如果worker创建成功，启动这个工作线程 workerStarted = true; //返回true } } } finally { if (! workerStarted) addWorkerFailed(w); } return workerStarted; } 接收任务放入队列 每次客户端过来请求（http），就会提交一次处理任务， poller对象的run方法中开始 -&gt; processKey() -&gt; processSocket() -&gt; executor.execute() 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 //org.apache.tomcat.util.net.NioEndpoint.Poller.run() @Override public void run() { // Loop until destroy() is called while (true) { //............... NioSocketWrapper socketWrapper = (NioSocketWrapper) sk.attachment(); if (socketWrapper != null) { //1调用processKey方法 processKey(sk, socketWrapper); } //............. } } //org.apache.tomcat.util.net.NioEndpoint.Poller.processKey(SelectionKey, NioSocketWrapper) protected void processKey(SelectionKey sk, NioSocketWrapper socketWrapper) { try { //.................... // 2调用processSocket方法 processSocket(socketWrapper, SocketEvent.OPEN_WRITE, true)) //.................. } } //org.apache.tomcat.util.net.AbstractEndpoint.processSocket(SocketWrapperBase&lt;S&gt;, SocketEvent, boolean) public boolean processSocket(SocketWrapperBase&lt;S&gt; socketWrapper, SocketEvent event, boolean dispatch) { try { //............... Executor executor = getExecutor(); if (dispatch &amp;&amp; executor != null) { executor.execute(sc); // 3调用ThreadPoolExecutor.execute提交新请求任务 } else { sc.run(); } //..................... return true; } ThreadPoolExecutor.execute worker 从队列中获取任务运行，下面是将任务放入队列的逻辑代码 ThreadPoolExecutor.execute(Runnable) 提交任务： 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 public void execute(Runnable command) { if (command == null) throw new NullPointerException(); int c = ctl.get(); // worker数 是否小于 核心线程数 tomcat中初始化后，一般不满足第一个条件，不会addWorker if (workerCountOf(c) &lt; corePoolSize) { if (addWorker(command, true)) return; c = ctl.get(); } // workQueue.offer(command)，将任务添加到队列 if (isRunning(c) &amp;&amp; workQueue.offer(command)) { int recheck = ctl.get(); if (! isRunning(recheck) &amp;&amp; remove(command)) reject(command); else if (workerCountOf(recheck) == 0) addWorker(null, false); } else if (!addWorker(command, false)) //workQueue.offer 返回false时，添加非核心线程 reject(command); } workQueue.offer(command) 最终完成了任务的提交(在tomcat处理远程http请求时)。 workQueue.offer TaskQueue 是 BlockingQueue 具体实现类，TaskQueue在offer时，首先会判断一些条件，如果TaskQueue觉得worker数量不够，会添加worker，但不是核心线程； corePoolSize = 10， maximumPoolSize=200 时，并发量小，一般线程数10（核心线程数），若并发非常大，最多也只能创建200个worker线程，190个线程在任务处理完后，闲时状态下会被回收，worker数回到10的数量； workQueue.offer(command)实际代码： 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 //TaskQueue @Override public boolean offer(Runnable o) { if (parent.getSubmittedCount()&lt;=(parent.getPoolSize())) return super.offer(o); if (parent.getPoolSize()&lt;parent.getMaximumPoolSize()) return false; // 当任务提交过多：未处理任务数(SubmittedCount) &gt; 线程数，并且 poolSize &lt; maximumPoolSize // 返回false ThreadPoolExecutor会 addWorker(command, false) 添加worker线程 return super.offer(o); } //super.offer LinkedBlockingQueue public boolean offer(E e) { if (e == null) throw new NullPointerException(); final AtomicInteger count = this.count; if (count.get() == capacity) return false; int c = -1; Node&lt;E&gt; node = new Node&lt;E&gt;(e); final ReentrantLock putLock = this.putLock; putLock.lock(); try { if (count.get() &lt; capacity) { enqueue(node); //此处将任务添加到队列 c = count.getAndIncrement(); if (c + 1 &lt; capacity) notFull.signal(); } } finally { putLock.unlock(); } if (c == 0) signalNotEmpty(); return c &gt;= 0; } // 添加任务到队列 /** * Links node at end of queue. * * @param node the node */ private void enqueue(Node&lt;E&gt; node) { // assert putLock.isHeldByCurrentThread(); // assert last.next == null; last = last.next = node; //链表结构 last.next = node; last = node } 之后是worker的工作，worker在run方法中通过去getTask()获取此处提交的任务，并执行完成任务。 线程池如何处理新提交的任务 添加worker之后，提交任务，因为worker数量达到corePoolSize，任务都会将放入队列，而worker的run方法则是循环获取队列中的任务（不为空时）， worker run方法： 1 2 3 4 /** Delegates main run loop to outer runWorker */ public void run() { runWorker(this); } 循环获取队列中的任务 runWorker(worker)方法 循环部分代码： 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 final void runWorker(Worker w) { Thread wt = Thread.currentThread(); Runnable task = w.firstTask; w.firstTask = null; w.unlock(); // allow interrupts boolean completedAbruptly = true; try { while (task != null || (task = getTask()) != null) { //循环获取队列中的任务 w.lock(); // 上锁 try { // 运行前处理 beforeExecute(wt, task); // 队列中的任务开始执行 task.run(); // 运行后处理 afterExecute(task, thrown); } finally { task = null; w.completedTasks++; w.unlock(); // 释放锁 } } completedAbruptly = false; } finally { processWorkerExit(w, completedAbruptly); } } task.run()执行任务 锁运用 锁用于保证过程的有序，一般一段代码上锁后，同一时间只允许一个线程去操作 ThreadPoolExecutor 使用锁主要保证两件事情， 1.给队列添加任务，释放锁之前，保证其他线程不能操作队列-添加队列任务） 2.获取队列的任务，释放锁之前，保证其他线程不能操作队列-取出队列任务） 在高并发情况下，锁能有效保证请求的有序处理，不至于混乱 给队列添加任务时上锁 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 public boolean offer(E e) { if (e == null) throw new NullPointerException(); final AtomicInteger count = this.count; if (count.get() == capacity) return false; int c = -1; Node&lt;E&gt; node = new Node&lt;E&gt;(e); final ReentrantLock putLock = this.putLock; putLock.lock(); //上锁 try { if (count.get() &lt; capacity) { enqueue(node); c = count.getAndIncrement(); if (c + 1 &lt; capacity) notFull.signal(); } } finally { putLock.unlock(); //释放锁 } if (c == 0) signalNotEmpty(); return c &gt;= 0; } 获取队列任务时上锁 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 private Runnable getTask() { boolean timedOut = false; // Did the last poll() time out? // ...省略 for (;;) { try { Runnable r = timed ? workQueue.poll(keepAliveTime, TimeUnit.NANOSECONDS) : workQueue.take(); //获取队列中一个任务 if (r != null) return r; timedOut = true; } catch (InterruptedException retry) { timedOut = false; } } } public E take() throws InterruptedException { E x; int c = -1; final AtomicInteger count = this.count; final ReentrantLock takeLock = this.takeLock; takeLock.lockInterruptibly(); // 上锁 try { while (count.get() == 0) { notEmpty.await(); //如果队列中没有任务，等待 } x = dequeue(); c = count.getAndDecrement(); if (c &gt; 1) notEmpty.signal(); } finally { takeLock.unlock(); // 释放锁 } if (c == capacity) signalNotFull(); return x; } 其他 volatile 在并发场景这个关键字修饰成员变量很常见， 主要目的公共变量在被某一个线程修改时，对其他线程可见（实时） sun.misc.Unsafe 高并发相关类API 线程池使用中，有平凡用到Unsafe类，这个类在高并发中，能做一些原子CAS操作，锁线程，释放线程等。 sun.misc.Unsafe 类是底层类，openjdk源码中有 原子操作数据 java.util.concurrent.locks.AbstractQueuedSynchronizer 类中就有保证原子操作的代码， 1 2 3 4 protected final boolean compareAndSetState(int expect, int update) { // See below for intrinsics setup to support this return unsafe.compareAndSwapInt(this, stateOffset, expect, update); } 对应Unsafe类的代码: 1 2 3 4 5 6 7 8 9 //对应的java底层，实际是native方法，对应C++代码 /** * Atomically update Java variable to &lt;tt&gt;x&lt;/tt&gt; if it is currently * holding &lt;tt&gt;expected&lt;/tt&gt;. * @return &lt;tt&gt;true&lt;/tt&gt; if successful */ public final native boolean compareAndSwapInt(Object o, long offset, int expected, int x); 方法的作用简单来说就是 更新一个值，保证原子性操作 当你要操作一个对象o的一个成员变量offset时,修改o.offset， 高并发下为保证准确性，你在操作o.offset的时候，读应该是正确的值，并且中间不能被别的线程修改来保证高并发的环境数据操作有效。 即 expected 期望值与内存中的值比较是一样的expected == 内存中的值 ，则更新值为 x，返回true代表修改成功 否则，期望值与内存值不同，说明值被其他线程修改过，不能更新值为x，并返回false，告诉操作者此次原子性修改失败。 注意一下能知道这是locks包下的类，ReentrantLock锁的底层原理就与unsafe类有关，以及下面的park，unpark。线程可以通过这个原子操作放回true或者false的机制，定义自己获取锁成功还是失败。 阻塞和唤醒线程 ThreadPoolExecute设计在请求队列任务为空时，worker线程可以是等待或者中断的（非销毁状态）。 这种做法避免了没必要的循环，节省了硬件资源，提高线程使用效率， 线程池的worker角色循环获取队列任务，如果队列中没有任务，worker.run 还是在等待的，不会退出线程，代码中用了notEmpty.await() 中断此worker线程，放入一个等待线程队列（区别去任务队列）；当有新任务需要时，再notEmpty.signal()唤醒此线程 底层分别是 park unsafe.park() 阻塞(停止)当前线程 public native void park(boolean isAbsolute, long time); unpark unsafe.unpark() 唤醒(取消停止)线程 public native void unpark(Object thread); 这个操作是对应的， 阻塞时，先将thread放入队列,再park， 唤醒时，从队列拿出被阻塞的线程，unpark(thread)唤醒指定线程。 java.util.concurrent.locks.AbstractQueuedLongSynchronizer.ConditionObject 类中 通过链表存放线程信息 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 // 添加一个阻塞线程 private Node addConditionWaiter() { Node t = lastWaiter; // If lastWaiter is cancelled, clean out. if (t != null &amp;&amp; t.waitStatus != Node.CONDITION) { unlinkCancelledWaiters(); t = lastWaiter; } Node node = new Node(Thread.currentThread(), Node.CONDITION); if (t == null) firstWaiter = node; else t.nextWaiter = node; lastWaiter = node; //将新阻塞的线程放到链表尾部 return node; } // 拿出一个被阻塞的线程 public final void signal() { if (!isHeldExclusively()) throw new IllegalMonitorStateException(); Node first = firstWaiter; //链表中第一个阻塞的线程 if (first != null) doSignal(first); } // 拿到后，唤醒此线程 final boolean transferForSignal(Node node) { LockSupport.unpark(node.thread); return true; } public static void unpark(Thread thread) { if (thread != null) UNSAFE.unpark(thread); } 这里要区分park 和 compareAndSwapInt是两个完全不同的东西，可以单独或者组合使用， 比如ReentrantLock实现锁功能这两个都需要","headline":"Tomcat用线程池处理http并发请求","dateModified":"2021-01-17T03:13:46+08:00","datePublished":"2020-12-23T22:10:00+08:00","mainEntityOfPage":{"@type":"WebPage","@id":"https://narule.github.io/posts/Tomcat-%E7%94%A8%E7%BA%BF%E7%A8%8B%E6%B1%A0%E5%A4%84%E7%90%86http%E5%B9%B6%E5%8F%91%E8%AF%B7%E6%B1%82/"},"url":"https://narule.github.io/posts/Tomcat-%E7%94%A8%E7%BA%BF%E7%A8%8B%E6%B1%A0%E5%A4%84%E7%90%86http%E5%B9%B6%E5%8F%91%E8%AF%B7%E6%B1%82/","author":{"@type":"Person","name":"Narule"},"@type":"BlogPosting","@context":"https://schema.org"}</script><title>Tomcat用线程池处理http并发请求 | Narule</title><link rel="shortcut icon" href="/assets/img/favicons/favicon.ico" type="image/x-icon"><link rel="icon" href="/assets/img/favicons/favicon.ico" type="image/x-icon"><link rel="apple-touch-icon" href="/assets/img/favicons/apple-icon.png"><link rel="apple-touch-icon" href="/assets/img/favicons/apple-icon-precomposed.png"><link rel="apple-touch-icon" sizes="57x57" href="/assets/img/favicons/apple-icon-57x57.png"><link rel="apple-touch-icon" sizes="60x60" href="/assets/img/favicons/apple-icon-60x60.png"><link rel="apple-touch-icon" sizes="72x72" href="/assets/img/favicons/apple-icon-72x72.png"><link rel="apple-touch-icon" sizes="76x76" href="/assets/img/favicons/apple-icon-76x76.png"><link rel="apple-touch-icon" sizes="114x114" href="/assets/img/favicons/apple-icon-114x114.png"><link rel="apple-touch-icon" sizes="120x120" href="/assets/img/favicons/apple-icon-120x120.png"><link rel="apple-touch-icon" sizes="144x144" href="/assets/img/favicons/apple-icon-144x144.png"><link rel="apple-touch-icon" sizes="152x152" href="/assets/img/favicons/apple-icon-152x152.png"><link rel="apple-touch-icon" sizes="180x180" href="/assets/img/favicons/apple-icon-180x180.png"><link rel="icon" type="image/png" sizes="192x192" href="/assets/img/favicons/android-icon-192x192.png"><link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicons/favicon-32x32.png"><link rel="icon" type="image/png" sizes="96x96" href="/assets/img/favicons/favicon-96x96.png"><link rel="icon" type="image/png" sizes="16x16" href="/assets/img/favicons/favicon-16x16.png"><link rel="manifest" href="/assets/img/favicons/manifest.json"><meta name='msapplication-config' content='/assets/img/favicons/browserconfig.xml'><meta name="msapplication-TileColor" content="#ffffff"><meta name="msapplication-TileImage" content="/assets/img/favicons/ms-icon-144x144.png"><meta name="theme-color" content="#ffffff"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"><link rel="dns-prefetch" href="https://fonts.gstatic.com"><link rel="preconnect" href="https://www.google-analytics.com" crossorigin="use-credentials"><link rel="dns-prefetch" href="https://www.google-analytics.com"><link rel="preconnect" href="https://www.googletagmanager.com" crossorigin="anonymous"><link rel="dns-prefetch" href="https://www.googletagmanager.com"><link rel="preconnect" href="cdn.jsdelivr.net"><link rel="dns-prefetch" href="cdn.jsdelivr.net"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/css/bootstrap.min.css" integrity="sha256-LA89z+k9fjgMKQ/kq4OO2Mrf8VltYml/VES+Rg0fh20=" crossorigin="anonymous"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.11.2/css/all.min.css" integrity="sha256-+N4/V/SbAFiW1MPBCXnfnP9QSN3+Keu+NlB+0ev/YKQ=" crossorigin="anonymous"><link rel="preload" href="/assets/css/post.css" as="style"><link rel="stylesheet" href="/assets/css/post.css"><link rel="preload" as="style" href="/assets/css/lib/bootstrap-toc.min.css"><link rel="stylesheet" href="/assets/css/lib/bootstrap-toc.min.css" /> <script src="https://cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js"></script> <script defer src="https://cdn.jsdelivr.net/combine/npm/popper.js@1.15.0,npm/bootstrap@4/dist/js/bootstrap.min.js"></script> <script async src="/assets/js/post.min.js"></script> <script defer src="/app.js"></script> <script defer src="https://www.googletagmanager.com/gtag/js?id=G-JVHJ82NYZT"></script> <script> document.addEventListener("DOMContentLoaded", function(event) { window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', 'G-JVHJ82NYZT'); }); </script><body data-spy="scroll" data-target="#toc"><div id="sidebar" class="d-flex flex-column align-items-end"><div class="profile-wrapper text-center"><div id="avatar"> <a href="/" alt="avatar" class="mx-auto"> <img src="https://narule.github.io/avatar.png" alt="avatar" onerror="this.style.display='none'"> </a></div><div class="site-title mt-3"> <a href="/">Narule</a></div><div class="site-subtitle font-italic">A Blog for Article; Chinese Blog is www.cnblogs.com/narule</div></div><ul class="w-100"><li class="nav-item"> <a href="/" class="nav-link"> <i class="fa-fw fas fa-home ml-xl-3 mr-xl-3 unloaded"></i> <span>HOME</span> </a><li class="nav-item"> <a href="/tabs/categories/" class="nav-link"> <i class="fa-fw fas fa-stream ml-xl-3 mr-xl-3 unloaded"></i> <span>CATEGORIES</span> </a><li class="nav-item"> <a href="/tabs/tags/" class="nav-link"> <i class="fa-fw fas fa-tags ml-xl-3 mr-xl-3 unloaded"></i> <span>TAGS</span> </a><li class="nav-item"> <a href="/tabs/archives/" class="nav-link"> <i class="fa-fw fas fa-archive ml-xl-3 mr-xl-3 unloaded"></i> <span>ARCHIVES</span> </a><li class="nav-item"> <a href="/tabs/about/" class="nav-link"> <i class="fa-fw fas fa-info ml-xl-3 mr-xl-3 unloaded"></i> <span>ABOUT</span> </a></ul><div class="sidebar-bottom mt-auto d-flex flex-wrap justify-content-center"> <a href="https://github.com/narule" aria-label="github" class="order-3" target="_blank" rel="noopener"> <i class="fab fa-github-alt"></i> </a> <a href="https://twitter.com/no_twitter" aria-label="twitter" class="order-4" target="_blank" rel="noopener"> <i class="fab fa-twitter"></i> </a> <a href=" javascript:location.href = 'mailto:' + ['narule','163.com'].join('@')" aria-label="email" class="order-5" > <i class="fas fa-envelope"></i> </a> <a href="/feed.xml" aria-label="rss" class="order-6" > <i class="fas fa-rss"></i> </a> <span class="icon-border order-2"></span> <span id="mode-toggle-wrapper" class="order-1"> <i class="mode-toggle fas fa-adjust"></i> <script type="text/javascript"> class ModeToggle { static get MODE_KEY() { return "mode"; } static get DARK_MODE() { return "dark"; } static get LIGHT_MODE() { return "light"; } constructor() { if (this.hasMode) { if (this.isDarkMode) { if (!this.isSysDarkPrefer) { this.setDark(); } } else { if (this.isSysDarkPrefer) { this.setLight(); } } } var self = this; /* always follow the system prefers */ this.sysDarkPrefers.addListener(function() { if (self.hasMode) { if (self.isDarkMode) { if (!self.isSysDarkPrefer) { self.setDark(); } } else { if (self.isSysDarkPrefer) { self.setLight(); } } self.clearMode(); } self.updateMermaid(); }); } /* constructor() */ setDark() { $('html').attr(ModeToggle.MODE_KEY, ModeToggle.DARK_MODE); sessionStorage.setItem(ModeToggle.MODE_KEY, ModeToggle.DARK_MODE); } setLight() { $('html').attr(ModeToggle.MODE_KEY, ModeToggle.LIGHT_MODE); sessionStorage.setItem(ModeToggle.MODE_KEY, ModeToggle.LIGHT_MODE); } clearMode() { $('html').removeAttr(ModeToggle.MODE_KEY); sessionStorage.removeItem(ModeToggle.MODE_KEY); } get sysDarkPrefers() { return window.matchMedia("(prefers-color-scheme: dark)"); } get isSysDarkPrefer() { return this.sysDarkPrefers.matches; } get isDarkMode() { return this.mode == ModeToggle.DARK_MODE; } get isLightMode() { return this.mode == ModeToggle.LIGHT_MODE; } get hasMode() { return this.mode != null; } get mode() { return sessionStorage.getItem(ModeToggle.MODE_KEY); } /* get the current mode on screen */ get modeStatus() { if (this.isDarkMode || (!this.hasMode && this.isSysDarkPrefer) ) { return ModeToggle.DARK_MODE; } else { return ModeToggle.LIGHT_MODE; } } updateMermaid() { if (typeof mermaid !== "undefined") { let expectedTheme = (this.modeStatus === ModeToggle.DARK_MODE? "dark" : "default"); let config = { theme: expectedTheme }; /* re-render the SVG › <https://github.com/mermaid-js/mermaid/issues/311#issuecomment-332557344> */ $(".mermaid").each(function() { let svgCode = $(this).prev().children().html(); $(this).removeAttr("data-processed"); $(this).html(svgCode); }); mermaid.initialize(config); mermaid.init(undefined, ".mermaid"); } } flipMode() { if (this.hasMode) { if (this.isSysDarkPrefer) { if (this.isLightMode) { this.clearMode(); } else { this.setLight(); } } else { if (this.isDarkMode) { this.clearMode(); } else { this.setDark(); } } } else { if (this.isSysDarkPrefer) { this.setLight(); } else { this.setDark(); } } this.updateMermaid(); } /* flipMode() */ } /* ModeToggle */ let toggle = new ModeToggle(); $(".mode-toggle").click(function() { toggle.flipMode(); }); </script> </span></div></div><div id="topbar-wrapper" class="row justify-content-center topbar-down"><div id="topbar" class="col-11 d-flex h-100 align-items-center justify-content-between"> <span id="breadcrumb"> <span> <a href="/"> Posts </a> </span> <span>Tomcat用线程池处理http并发请求</span> </span> <i id="sidebar-trigger" class="fas fa-bars fa-fw"></i><div id="topbar-title"> Post</div><i id="search-trigger" class="fas fa-search fa-fw"></i> <span id="search-wrapper" class="align-items-center"> <i class="fas fa-search fa-fw"></i> <input class="form-control" id="search-input" type="search" aria-label="search" placeholder="Search..."> <i class="fa fa-times-circle fa-fw" id="search-cleaner"></i> </span> <span id="search-cancel" >Cancel</span></div></div><div id="main-wrapper"><div id="main"><div class="row"><div id="post-wrapper" class="col-12 col-lg-11 col-xl-8"><div class="post pl-1 pr-1 pl-sm-2 pr-sm-2 pl-md-4 pr-md-4"><h1 data-toc-skip>Tomcat用线程池处理http并发请求</h1><div class="post-meta text-muted d-flex flex-column"><div> <span class="timeago " data-toggle="tooltip" data-placement="bottom" title="Wed, Dec 23, 2020, 10:10 PM +0800" > Dec 23, 2020 <i class="unloaded">2020-12-23T22:10:00+08:00</i> </span> by <span class="author"> Narule </span></div><div> <span> Updated <span class="timeago lastmod" data-toggle="tooltip" data-placement="bottom" title="Sun, Jan 17, 2021, 3:13 AM +0800" > Jan 17, 2021 <i class="unloaded">2021-01-17T03:13:46+08:00</i> </span> </span> <span class="readtime" data-toggle="tooltip" data-placement="bottom" title="3357 words">18 min</span></div></div><div class="post-content"><h1 id="tomcat用线程池处理http并发请求">Tomcat用线程池处理http并发请求</h1><p>通过了解学习tomcat如何处理并发请求了解到线程池，锁，队列，unsafe类，下面的主要代码来自</p><p>java-jre： <code class="language-plaintext highlighter-rouge">sun.misc.Unsafe</code> <code class="language-plaintext highlighter-rouge">java.util.concurrent.ThreadPoolExecutor</code> <code class="language-plaintext highlighter-rouge">java.util.concurrent.ThreadPoolExecutor.Worker</code> <code class="language-plaintext highlighter-rouge">java.util.concurrent.locks.AbstractQueuedSynchronizer</code> <code class="language-plaintext highlighter-rouge">java.util.concurrent.locks.AbstractQueuedLongSynchronizer</code> <code class="language-plaintext highlighter-rouge">java.util.concurrent.LinkedBlockingQueue</code></p><p>tomcat: <code class="language-plaintext highlighter-rouge">org.apache.tomcat.util.net.NioEndpoint</code> <code class="language-plaintext highlighter-rouge">org.apache.tomcat.util.threads.ThreadPoolExecutor</code> <code class="language-plaintext highlighter-rouge">org.apache.tomcat.util.threads.TaskThreadFactory</code> <code class="language-plaintext highlighter-rouge">org.apache.tomcat.util.threads.TaskQueue</code></p><h2 id="threadpoolexecutor">ThreadPoolExecutor</h2><p>是一个线程池实现类，管理线程，减少线程开销，可以用来提高任务执行效率，</p><p>构造方法中的参数有</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+</pre><td class="rouge-code"><pre><span class="kd">public</span> <span class="nf">ThreadPoolExecutor</span><span class="o">(</span>
+    <span class="kt">int</span> <span class="n">corePoolSize</span><span class="o">,</span>
+    <span class="kt">int</span> <span class="n">maximumPoolSize</span><span class="o">,</span>
+    <span class="kt">long</span> <span class="n">keepAliveTime</span><span class="o">,</span>
+    <span class="nc">TimeUnit</span> <span class="n">unit</span><span class="o">,</span>
+    <span class="nc">BlockingQueue</span><span class="o">&lt;</span><span class="nc">Runnable</span><span class="o">&gt;</span> <span class="n">workQueue</span><span class="o">,</span>
+    <span class="nc">ThreadFactory</span> <span class="n">threadFactory</span><span class="o">,</span>
+    <span class="nc">RejectedExecutionHandler</span> <span class="n">handler</span><span class="o">)</span> <span class="o">{</span>
+    
+<span class="o">}</span>
+</pre></table></code></div></div><p>corePoolSize 是核心线程数 maximumPoolSize 是最大线程数 keepAliveTime 非核心线程最大空闲时间（超过时间终止） unit 时间单位 workQueue 队列，当任务过多时，先存放在队列 threadFactory 线程工厂，创建线程的工厂 handler 拒绝策略，当任务数过多，队列不能再存放任务时，该如何处理，由此对象去处理。这是个接口，你可以自定义处理方式</p><h2 id="threadpoolexecutor在tomcat中http请求的应用">ThreadPoolExecutor在Tomcat中http请求的应用</h2><p>tomcat有一个自己的线程池类：<strong>org.apache.tomcat.util.threads.ThreadPoolExecutor</strong>，继承原先<code class="language-plaintext highlighter-rouge">java.util.concurrent.ThreadPoolExecutor</code>类，此线程池是tomcat用来在接收到远程请求后，将每次请求单独作为一个任务去处理使用，即调用execute(Runnable)，此类重写了execute方法，做了一点功能扩展，有一个功能是为了判断worker数量是否足够，判断不足够时，添加非核心线程worker</p><p><code class="language-plaintext highlighter-rouge">org.apache.tomcat.util.threads.ThreadPoolExecutor</code> 部分功能扩展代码：</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+</pre><td class="rouge-code"><pre><span class="kd">private</span> <span class="kd">final</span> <span class="nc">AtomicInteger</span> <span class="n">submittedCount</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">AtomicInteger</span><span class="o">(</span><span class="mi">0</span><span class="o">);</span> <span class="c1">//提交任务总数</span>
+<span class="c1">// 重写 execute(Runnable command)</span>
+<span class="kd">public</span> <span class="kt">void</span> <span class="nf">execute</span><span class="o">(</span><span class="nc">Runnable</span> <span class="n">command</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">execute</span><span class="o">(</span><span class="n">command</span><span class="o">,</span><span class="mi">0</span><span class="o">,</span><span class="nc">TimeUnit</span><span class="o">.</span><span class="na">MILLISECONDS</span><span class="o">);</span>
+    <span class="o">}</span>
+<span class="kd">public</span> <span class="kt">void</span> <span class="nf">execute</span><span class="o">(</span><span class="nc">Runnable</span> <span class="n">command</span><span class="o">,</span> <span class="kt">long</span> <span class="n">timeout</span><span class="o">,</span> <span class="nc">TimeUnit</span> <span class="n">unit</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">submittedCount</span><span class="o">.</span><span class="na">incrementAndGet</span><span class="o">();</span> <span class="c1">// 提交任务之前，总数 + 1</span>
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="kd">super</span><span class="o">.</span><span class="na">execute</span><span class="o">(</span><span class="n">command</span><span class="o">);</span>
+        <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">RejectedExecutionException</span> <span class="n">rx</span><span class="o">)</span> <span class="o">{</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+<span class="c1">//重写 afterExecute 添加任务完成后的逻辑</span>
+<span class="nd">@Override</span>
+    <span class="kd">protected</span> <span class="kt">void</span> <span class="nf">afterExecute</span><span class="o">(</span><span class="nc">Runnable</span> <span class="n">r</span><span class="o">,</span> <span class="nc">Throwable</span> <span class="n">t</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(!(</span><span class="n">t</span> <span class="k">instanceof</span> <span class="nc">StopPooledThreadException</span><span class="o">))</span> <span class="o">{</span>
+            <span class="n">submittedCount</span><span class="o">.</span><span class="na">decrementAndGet</span><span class="o">();</span> <span class="c1">// 完成任务后 总数 -1</span>
+        <span class="o">}</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">t</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">stopCurrentThreadIfNeeded</span><span class="o">();</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+</pre></table></code></div></div><p>上面是tomcat自己的线程池判断是否需要添加非核心线程关键部分，在workQueue.offer时，会拿submittedCount这个数作为是否添加woker的一个依据。 workQueue.offer见下文</p><h3 id="初始化">初始化</h3><p><code class="language-plaintext highlighter-rouge">org.apache.tomcat.util.net.NioEndpoint</code></p><h4 id="创建线程池">创建线程池</h4><p>NioEndpoint初始化的时候，创建了线程池</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+</pre><td class="rouge-code"><pre><span class="kd">public</span> <span class="kt">void</span> <span class="nf">createExecutor</span><span class="o">()</span> <span class="o">{</span>
+        <span class="n">internalExecutor</span> <span class="o">=</span> <span class="kc">true</span><span class="o">;</span>
+        <span class="nc">TaskQueue</span> <span class="n">taskqueue</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">TaskQueue</span><span class="o">();</span>
+        <span class="c1">//TaskQueue无界队列，可以一直添加，因此handler 等同于无效</span>
+        <span class="nc">TaskThreadFactory</span> <span class="n">tf</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">TaskThreadFactory</span><span class="o">(</span><span class="n">getName</span><span class="o">()</span> <span class="o">+</span> <span class="s">"-exec-"</span><span class="o">,</span> <span class="n">daemon</span><span class="o">,</span> <span class="n">getThreadPriority</span><span class="o">());</span>
+        <span class="n">executor</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ThreadPoolExecutor</span><span class="o">(</span><span class="n">getMinSpareThreads</span><span class="o">(),</span> <span class="n">getMaxThreads</span><span class="o">(),</span> <span class="mi">60</span><span class="o">,</span> <span class="nc">TimeUnit</span><span class="o">.</span><span class="na">SECONDS</span><span class="o">,</span><span class="n">taskqueue</span><span class="o">,</span> <span class="n">tf</span><span class="o">);</span>
+        <span class="n">taskqueue</span><span class="o">.</span><span class="na">setParent</span><span class="o">(</span> <span class="o">(</span><span class="nc">ThreadPoolExecutor</span><span class="o">)</span> <span class="n">executor</span><span class="o">);</span>
+    <span class="o">}</span>
+</pre></table></code></div></div><h4 id="创建工作线程worker">创建工作线程worker</h4><p>在线程池创建时，调用prestartAllCoreThreads(), 初始化核心工作线程worker，并启动</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+</pre><td class="rouge-code"><pre><span class="kd">public</span> <span class="kt">int</span> <span class="nf">prestartAllCoreThreads</span><span class="o">()</span> <span class="o">{</span>
+        <span class="kt">int</span> <span class="n">n</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span>
+        <span class="k">while</span> <span class="o">(</span><span class="n">addWorker</span><span class="o">(</span><span class="kc">null</span><span class="o">,</span> <span class="kc">true</span><span class="o">))</span>
+            <span class="o">++</span><span class="n">n</span><span class="o">;</span>
+        <span class="k">return</span> <span class="n">n</span><span class="o">;</span>
+    <span class="o">}</span>
+</pre></table></code></div></div><p>当addWorker 数量等于corePoolSize时，addWorker(null,ture)会返回false,停止worker工作线程的创建</p><p>addWorker时，会启动worker线程</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+</pre><td class="rouge-code"><pre><span class="kd">private</span> <span class="kt">boolean</span> <span class="nf">addWorker</span><span class="o">(</span><span class="nc">Runnable</span> <span class="n">firstTask</span><span class="o">,</span> <span class="kt">boolean</span> <span class="n">core</span><span class="o">)</span> <span class="o">{</span>
+    	<span class="c1">//......省去判断代码（是否需要添加worker的判断）</span>
+
+        <span class="kt">boolean</span> <span class="n">workerStarted</span> <span class="o">=</span> <span class="kc">false</span><span class="o">;</span>
+        <span class="kt">boolean</span> <span class="n">workerAdded</span> <span class="o">=</span> <span class="kc">false</span><span class="o">;</span>
+        <span class="nc">Worker</span> <span class="n">w</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="n">w</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">Worker</span><span class="o">(</span><span class="n">firstTask</span><span class="o">);</span><span class="c1">//1 创建worker线程</span>
+            <span class="kd">final</span> <span class="nc">Thread</span> <span class="n">t</span> <span class="o">=</span> <span class="n">w</span><span class="o">.</span><span class="na">thread</span><span class="o">;</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">t</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+                <span class="kd">final</span> <span class="nc">ReentrantLock</span> <span class="n">mainLock</span> <span class="o">=</span> <span class="k">this</span><span class="o">.</span><span class="na">mainLock</span><span class="o">;</span>
+                <span class="n">mainLock</span><span class="o">.</span><span class="na">lock</span><span class="o">();</span>
+                <span class="k">try</span> <span class="o">{</span>
+                        <span class="n">workers</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">w</span><span class="o">);</span>
+                        <span class="n">workerAdded</span> <span class="o">=</span> <span class="kc">true</span><span class="o">;</span>
+                    <span class="o">}</span>
+                <span class="o">}</span> <span class="k">finally</span> <span class="o">{</span>
+                    <span class="n">mainLock</span><span class="o">.</span><span class="na">unlock</span><span class="o">();</span>
+                <span class="o">}</span> 	
+                <span class="k">if</span> <span class="o">(</span><span class="n">workerAdded</span><span class="o">)</span> <span class="o">{</span>
+                    <span class="n">t</span><span class="o">.</span><span class="na">start</span><span class="o">();</span> <span class="c1">//2 如果worker创建成功，启动这个工作线程</span>
+                    <span class="n">workerStarted</span> <span class="o">=</span> <span class="kc">true</span><span class="o">;</span> <span class="c1">//返回true</span>
+                <span class="o">}</span>
+            <span class="o">}</span>
+        <span class="o">}</span> <span class="k">finally</span> <span class="o">{</span>
+            <span class="k">if</span> <span class="o">(!</span> <span class="n">workerStarted</span><span class="o">)</span>
+                <span class="n">addWorkerFailed</span><span class="o">(</span><span class="n">w</span><span class="o">);</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="n">workerStarted</span><span class="o">;</span>
+    <span class="o">}</span>
+</pre></table></code></div></div><h3 id="接收任务放入队列">接收任务放入队列</h3><p>每次客户端过来请求（http），就会提交一次处理任务， poller对象的run方法中开始 -&gt; processKey() -&gt; processSocket() -&gt; executor.execute()</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+</pre><td class="rouge-code"><pre><span class="c1">//org.apache.tomcat.util.net.NioEndpoint.Poller.run() </span>
+<span class="nd">@Override</span>
+<span class="kd">public</span> <span class="kt">void</span> <span class="nf">run</span><span class="o">()</span> <span class="o">{</span>
+    <span class="c1">// Loop until destroy() is called</span>
+    <span class="k">while</span> <span class="o">(</span><span class="kc">true</span><span class="o">)</span> <span class="o">{</span>
+        <span class="c1">//...............</span>
+            <span class="nc">NioSocketWrapper</span> <span class="n">socketWrapper</span> <span class="o">=</span> <span class="o">(</span><span class="nc">NioSocketWrapper</span><span class="o">)</span> <span class="n">sk</span><span class="o">.</span><span class="na">attachment</span><span class="o">();</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">socketWrapper</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+                <span class="c1">//1调用processKey方法</span>
+                <span class="n">processKey</span><span class="o">(</span><span class="n">sk</span><span class="o">,</span> <span class="n">socketWrapper</span><span class="o">);</span>
+            <span class="o">}</span>
+        <span class="c1">//.............</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+
+<span class="c1">//org.apache.tomcat.util.net.NioEndpoint.Poller.processKey(SelectionKey, NioSocketWrapper)</span>
+<span class="kd">protected</span> <span class="kt">void</span> <span class="nf">processKey</span><span class="o">(</span><span class="nc">SelectionKey</span> <span class="n">sk</span><span class="o">,</span> <span class="nc">NioSocketWrapper</span> <span class="n">socketWrapper</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">try</span> <span class="o">{</span>
+                    <span class="c1">//....................</span>
+					<span class="c1">// 2调用processSocket方法</span>
+                   <span class="n">processSocket</span><span class="o">(</span><span class="n">socketWrapper</span><span class="o">,</span> <span class="nc">SocketEvent</span><span class="o">.</span><span class="na">OPEN_WRITE</span><span class="o">,</span> <span class="kc">true</span><span class="o">))</span>
+                    <span class="c1">//..................</span>
+        	<span class="o">}</span>
+<span class="o">}</span>
+    
+<span class="c1">//org.apache.tomcat.util.net.AbstractEndpoint.processSocket(SocketWrapperBase&lt;S&gt;, SocketEvent, boolean)</span>
+<span class="kd">public</span> <span class="kt">boolean</span> <span class="nf">processSocket</span><span class="o">(</span><span class="nc">SocketWrapperBase</span><span class="o">&lt;</span><span class="no">S</span><span class="o">&gt;</span> <span class="n">socketWrapper</span><span class="o">,</span>
+            <span class="nc">SocketEvent</span> <span class="n">event</span><span class="o">,</span> <span class="kt">boolean</span> <span class="n">dispatch</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="c1">//...............</span>
+            <span class="nc">Executor</span> <span class="n">executor</span> <span class="o">=</span> <span class="n">getExecutor</span><span class="o">();</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">dispatch</span> <span class="o">&amp;&amp;</span> <span class="n">executor</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">executor</span><span class="o">.</span><span class="na">execute</span><span class="o">(</span><span class="n">sc</span><span class="o">);</span> <span class="c1">// 3调用ThreadPoolExecutor.execute提交新请求任务</span>
+            <span class="o">}</span> <span class="k">else</span> <span class="o">{</span>
+                <span class="n">sc</span><span class="o">.</span><span class="na">run</span><span class="o">();</span>
+            <span class="o">}</span>
+            <span class="c1">//.....................</span>
+        <span class="k">return</span> <span class="kc">true</span><span class="o">;</span>
+    <span class="o">}</span>
+</pre></table></code></div></div><h4 id="threadpoolexecutorexecute">ThreadPoolExecutor.execute</h4><p>worker 从队列中获取任务运行，下面是将任务放入队列的逻辑代码</p><p>ThreadPoolExecutor.execute(Runnable) 提交任务：</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+</pre><td class="rouge-code"><pre><span class="kd">public</span> <span class="kt">void</span> <span class="nf">execute</span><span class="o">(</span><span class="nc">Runnable</span> <span class="n">command</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">command</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span>
+            <span class="k">throw</span> <span class="k">new</span> <span class="nf">NullPointerException</span><span class="o">();</span>
+       
+        <span class="kt">int</span> <span class="n">c</span> <span class="o">=</span> <span class="n">ctl</span><span class="o">.</span><span class="na">get</span><span class="o">();</span>
+    	<span class="c1">// worker数 是否小于 核心线程数   tomcat中初始化后，一般不满足第一个条件，不会addWorker</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">workerCountOf</span><span class="o">(</span><span class="n">c</span><span class="o">)</span> <span class="o">&lt;</span> <span class="n">corePoolSize</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">addWorker</span><span class="o">(</span><span class="n">command</span><span class="o">,</span> <span class="kc">true</span><span class="o">))</span>
+                <span class="k">return</span><span class="o">;</span>
+            <span class="n">c</span> <span class="o">=</span> <span class="n">ctl</span><span class="o">.</span><span class="na">get</span><span class="o">();</span>
+        <span class="o">}</span>
+    	<span class="c1">// workQueue.offer(command)，将任务添加到队列</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">isRunning</span><span class="o">(</span><span class="n">c</span><span class="o">)</span> <span class="o">&amp;&amp;</span> <span class="n">workQueue</span><span class="o">.</span><span class="na">offer</span><span class="o">(</span><span class="n">command</span><span class="o">))</span> <span class="o">{</span>
+            <span class="kt">int</span> <span class="n">recheck</span> <span class="o">=</span> <span class="n">ctl</span><span class="o">.</span><span class="na">get</span><span class="o">();</span>
+            <span class="k">if</span> <span class="o">(!</span> <span class="n">isRunning</span><span class="o">(</span><span class="n">recheck</span><span class="o">)</span> <span class="o">&amp;&amp;</span> <span class="n">remove</span><span class="o">(</span><span class="n">command</span><span class="o">))</span>
+                <span class="n">reject</span><span class="o">(</span><span class="n">command</span><span class="o">);</span>
+            <span class="k">else</span> <span class="nf">if</span> <span class="o">(</span><span class="n">workerCountOf</span><span class="o">(</span><span class="n">recheck</span><span class="o">)</span> <span class="o">==</span> <span class="mi">0</span><span class="o">)</span>
+                <span class="n">addWorker</span><span class="o">(</span><span class="kc">null</span><span class="o">,</span> <span class="kc">false</span><span class="o">);</span>
+        <span class="o">}</span>
+        <span class="k">else</span> <span class="nf">if</span> <span class="o">(!</span><span class="n">addWorker</span><span class="o">(</span><span class="n">command</span><span class="o">,</span> <span class="kc">false</span><span class="o">))</span> <span class="c1">//workQueue.offer 返回false时，添加非核心线程</span>
+            <span class="n">reject</span><span class="o">(</span><span class="n">command</span><span class="o">);</span>
+    <span class="o">}</span>
+</pre></table></code></div></div><p>workQueue.offer(command) 最终完成了任务的提交(在tomcat处理远程http请求时)。</p><h4 id="workqueueoffer">workQueue.offer</h4><p>TaskQueue 是 BlockingQueue 具体实现类，TaskQueue在offer时，首先会判断一些条件，如果TaskQueue觉得worker数量不够，会添加worker，但不是核心线程； corePoolSize = 10， maximumPoolSize=200 时，并发量小，一般线程数10（核心线程数），若并发非常大，最多也只能创建200个worker线程，190个线程在任务处理完后，闲时状态下会被回收，worker数回到10的数量； workQueue.offer(command)实际代码：</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+</pre><td class="rouge-code"><pre><span class="c1">//TaskQueue </span>
+<span class="nd">@Override</span>
+<span class="kd">public</span> <span class="kt">boolean</span> <span class="nf">offer</span><span class="o">(</span><span class="nc">Runnable</span> <span class="n">o</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">parent</span><span class="o">.</span><span class="na">getSubmittedCount</span><span class="o">()&lt;=(</span><span class="n">parent</span><span class="o">.</span><span class="na">getPoolSize</span><span class="o">()))</span> <span class="k">return</span> <span class="kd">super</span><span class="o">.</span><span class="na">offer</span><span class="o">(</span><span class="n">o</span><span class="o">);</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">parent</span><span class="o">.</span><span class="na">getPoolSize</span><span class="o">()&lt;</span><span class="n">parent</span><span class="o">.</span><span class="na">getMaximumPoolSize</span><span class="o">())</span> <span class="k">return</span> <span class="kc">false</span><span class="o">;</span>
+    <span class="c1">// 当任务提交过多：未处理任务数(SubmittedCount) &gt; 线程数，并且 poolSize &lt; maximumPoolSize </span>
+    <span class="c1">// 返回false  ThreadPoolExecutor会 addWorker(command, false) 添加worker线程</span>
+    <span class="k">return</span> <span class="kd">super</span><span class="o">.</span><span class="na">offer</span><span class="o">(</span><span class="n">o</span><span class="o">);</span> 
+<span class="o">}</span>
+
+<span class="c1">//super.offer LinkedBlockingQueue </span>
+<span class="kd">public</span> <span class="kt">boolean</span> <span class="nf">offer</span><span class="o">(</span><span class="no">E</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">e</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span> <span class="k">throw</span> <span class="k">new</span> <span class="nc">NullPointerException</span><span class="o">();</span>
+    <span class="kd">final</span> <span class="nc">AtomicInteger</span> <span class="n">count</span> <span class="o">=</span> <span class="k">this</span><span class="o">.</span><span class="na">count</span><span class="o">;</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">count</span><span class="o">.</span><span class="na">get</span><span class="o">()</span> <span class="o">==</span> <span class="n">capacity</span><span class="o">)</span>
+        <span class="k">return</span> <span class="kc">false</span><span class="o">;</span>
+    <span class="kt">int</span> <span class="n">c</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="o">;</span>
+    <span class="nc">Node</span><span class="o">&lt;</span><span class="no">E</span><span class="o">&gt;</span> <span class="n">node</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">Node</span><span class="o">&lt;</span><span class="no">E</span><span class="o">&gt;(</span><span class="n">e</span><span class="o">);</span>
+    <span class="kd">final</span> <span class="nc">ReentrantLock</span> <span class="n">putLock</span> <span class="o">=</span> <span class="k">this</span><span class="o">.</span><span class="na">putLock</span><span class="o">;</span>
+    <span class="n">putLock</span><span class="o">.</span><span class="na">lock</span><span class="o">();</span>
+    <span class="k">try</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">count</span><span class="o">.</span><span class="na">get</span><span class="o">()</span> <span class="o">&lt;</span> <span class="n">capacity</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">enqueue</span><span class="o">(</span><span class="n">node</span><span class="o">);</span> <span class="c1">//此处将任务添加到队列</span>
+            <span class="n">c</span> <span class="o">=</span> <span class="n">count</span><span class="o">.</span><span class="na">getAndIncrement</span><span class="o">();</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">c</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="n">capacity</span><span class="o">)</span>
+                <span class="n">notFull</span><span class="o">.</span><span class="na">signal</span><span class="o">();</span>
+        <span class="o">}</span>
+    <span class="o">}</span> <span class="k">finally</span> <span class="o">{</span>
+        <span class="n">putLock</span><span class="o">.</span><span class="na">unlock</span><span class="o">();</span>
+    <span class="o">}</span>
+    <span class="k">if</span> <span class="o">(</span><span class="n">c</span> <span class="o">==</span> <span class="mi">0</span><span class="o">)</span>
+        <span class="n">signalNotEmpty</span><span class="o">();</span>
+    <span class="k">return</span> <span class="n">c</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="o">;</span>
+<span class="o">}</span>
+
+<span class="c1">// 添加任务到队列</span>
+<span class="cm">/**
+     * Links node at end of queue.
+     *
+     * @param node the node
+     */</span>
+<span class="kd">private</span> <span class="kt">void</span> <span class="nf">enqueue</span><span class="o">(</span><span class="nc">Node</span><span class="o">&lt;</span><span class="no">E</span><span class="o">&gt;</span> <span class="n">node</span><span class="o">)</span> <span class="o">{</span>
+    <span class="c1">// assert putLock.isHeldByCurrentThread();</span>
+    <span class="c1">// assert last.next == null;</span>
+    <span class="n">last</span> <span class="o">=</span> <span class="n">last</span><span class="o">.</span><span class="na">next</span> <span class="o">=</span> <span class="n">node</span><span class="o">;</span> <span class="c1">//链表结构 last.next = node; last = node</span>
+<span class="o">}</span>
+</pre></table></code></div></div><p>之后是worker的工作，worker在run方法中通过去getTask()获取此处提交的任务，并执行完成任务。</p><h3 id="线程池如何处理新提交的任务">线程池如何处理新提交的任务</h3><p>添加worker之后，提交任务，因为worker数量达到corePoolSize，任务都会将放入队列，而worker的run方法则是循环获取队列中的任务（不为空时），</p><p>worker run方法：</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+</pre><td class="rouge-code"><pre><span class="cm">/** Delegates main run loop to outer runWorker  */</span>
+        <span class="kd">public</span> <span class="kt">void</span> <span class="nf">run</span><span class="o">()</span> <span class="o">{</span>
+            <span class="n">runWorker</span><span class="o">(</span><span class="k">this</span><span class="o">);</span>
+ <span class="o">}</span>
+</pre></table></code></div></div><h4 id="循环获取队列中的任务">循环获取队列中的任务</h4><p>runWorker(worker)方法 循环部分代码：</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+</pre><td class="rouge-code"><pre><span class="kd">final</span> <span class="kt">void</span> <span class="nf">runWorker</span><span class="o">(</span><span class="nc">Worker</span> <span class="n">w</span><span class="o">)</span> <span class="o">{</span>
+        <span class="nc">Thread</span> <span class="n">wt</span> <span class="o">=</span> <span class="nc">Thread</span><span class="o">.</span><span class="na">currentThread</span><span class="o">();</span>
+        <span class="nc">Runnable</span> <span class="n">task</span> <span class="o">=</span> <span class="n">w</span><span class="o">.</span><span class="na">firstTask</span><span class="o">;</span>
+        <span class="n">w</span><span class="o">.</span><span class="na">firstTask</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+        <span class="n">w</span><span class="o">.</span><span class="na">unlock</span><span class="o">();</span> <span class="c1">// allow interrupts</span>
+        <span class="kt">boolean</span> <span class="n">completedAbruptly</span> <span class="o">=</span> <span class="kc">true</span><span class="o">;</span>
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="k">while</span> <span class="o">(</span><span class="n">task</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">||</span> <span class="o">(</span><span class="n">task</span> <span class="o">=</span> <span class="n">getTask</span><span class="o">())</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span> <span class="c1">//循环获取队列中的任务</span>
+                <span class="n">w</span><span class="o">.</span><span class="na">lock</span><span class="o">();</span> <span class="c1">// 上锁</span>
+                <span class="k">try</span> <span class="o">{</span>
+                    <span class="c1">// 运行前处理</span>
+                    <span class="n">beforeExecute</span><span class="o">(</span><span class="n">wt</span><span class="o">,</span> <span class="n">task</span><span class="o">);</span>
+                    <span class="c1">// 队列中的任务开始执行</span>
+                    <span class="n">task</span><span class="o">.</span><span class="na">run</span><span class="o">();</span>
+                    <span class="c1">// 运行后处理</span>
+                    <span class="n">afterExecute</span><span class="o">(</span><span class="n">task</span><span class="o">,</span> <span class="n">thrown</span><span class="o">);</span>
+                <span class="o">}</span> <span class="k">finally</span> <span class="o">{</span>
+                    <span class="n">task</span> <span class="o">=</span> <span class="kc">null</span><span class="o">;</span>
+                    <span class="n">w</span><span class="o">.</span><span class="na">completedTasks</span><span class="o">++;</span>
+                    <span class="n">w</span><span class="o">.</span><span class="na">unlock</span><span class="o">();</span> <span class="c1">// 释放锁</span>
+                <span class="o">}</span>
+            <span class="o">}</span>
+            <span class="n">completedAbruptly</span> <span class="o">=</span> <span class="kc">false</span><span class="o">;</span>
+        <span class="o">}</span> <span class="k">finally</span> <span class="o">{</span>
+            <span class="n">processWorkerExit</span><span class="o">(</span><span class="n">w</span><span class="o">,</span> <span class="n">completedAbruptly</span><span class="o">);</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+</pre></table></code></div></div><p>task.run()执行任务</p><h3 id="锁运用">锁运用</h3><p>锁用于保证过程的有序，一般一段代码上锁后，同一时间只允许一个线程去操作</p><p>ThreadPoolExecutor 使用锁主要保证两件事情， 1.给队列添加任务，释放锁之前，保证其他线程不能操作队列-添加队列任务） 2.获取队列的任务，释放锁之前，保证其他线程不能操作队列-取出队列任务） 在高并发情况下，锁能有效保证请求的有序处理，不至于混乱</p><h4 id="给队列添加任务时上锁">给队列添加任务时上锁</h4><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+</pre><td class="rouge-code"><pre><span class="kd">public</span> <span class="kt">boolean</span> <span class="nf">offer</span><span class="o">(</span><span class="no">E</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">e</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span> <span class="k">throw</span> <span class="k">new</span> <span class="nc">NullPointerException</span><span class="o">();</span>
+        <span class="kd">final</span> <span class="nc">AtomicInteger</span> <span class="n">count</span> <span class="o">=</span> <span class="k">this</span><span class="o">.</span><span class="na">count</span><span class="o">;</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">count</span><span class="o">.</span><span class="na">get</span><span class="o">()</span> <span class="o">==</span> <span class="n">capacity</span><span class="o">)</span>
+            <span class="k">return</span> <span class="kc">false</span><span class="o">;</span>
+        <span class="kt">int</span> <span class="n">c</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="o">;</span>
+        <span class="nc">Node</span><span class="o">&lt;</span><span class="no">E</span><span class="o">&gt;</span> <span class="n">node</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">Node</span><span class="o">&lt;</span><span class="no">E</span><span class="o">&gt;(</span><span class="n">e</span><span class="o">);</span>
+        <span class="kd">final</span> <span class="nc">ReentrantLock</span> <span class="n">putLock</span> <span class="o">=</span> <span class="k">this</span><span class="o">.</span><span class="na">putLock</span><span class="o">;</span>
+        <span class="n">putLock</span><span class="o">.</span><span class="na">lock</span><span class="o">();</span>  <span class="c1">//上锁</span>
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">count</span><span class="o">.</span><span class="na">get</span><span class="o">()</span> <span class="o">&lt;</span> <span class="n">capacity</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">enqueue</span><span class="o">(</span><span class="n">node</span><span class="o">);</span>
+                <span class="n">c</span> <span class="o">=</span> <span class="n">count</span><span class="o">.</span><span class="na">getAndIncrement</span><span class="o">();</span>
+                <span class="k">if</span> <span class="o">(</span><span class="n">c</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="n">capacity</span><span class="o">)</span>
+                    <span class="n">notFull</span><span class="o">.</span><span class="na">signal</span><span class="o">();</span>
+            <span class="o">}</span>
+        <span class="o">}</span> <span class="k">finally</span> <span class="o">{</span>
+            <span class="n">putLock</span><span class="o">.</span><span class="na">unlock</span><span class="o">();</span>  <span class="c1">//释放锁</span>
+        <span class="o">}</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">c</span> <span class="o">==</span> <span class="mi">0</span><span class="o">)</span>
+            <span class="n">signalNotEmpty</span><span class="o">();</span>
+        <span class="k">return</span> <span class="n">c</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="o">;</span>
+    <span class="o">}</span>
+</pre></table></code></div></div><h4 id="获取队列任务时上锁">获取队列任务时上锁</h4><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+</pre><td class="rouge-code"><pre><span class="kd">private</span> <span class="nc">Runnable</span> <span class="nf">getTask</span><span class="o">()</span> <span class="o">{</span>
+        <span class="kt">boolean</span> <span class="n">timedOut</span> <span class="o">=</span> <span class="kc">false</span><span class="o">;</span> <span class="c1">// Did the last poll() time out?</span>
+		<span class="c1">// ...省略</span>
+        <span class="k">for</span> <span class="o">(;;)</span> <span class="o">{</span>
+            <span class="k">try</span> <span class="o">{</span>
+                <span class="nc">Runnable</span> <span class="n">r</span> <span class="o">=</span> <span class="n">timed</span> <span class="o">?</span>
+                    <span class="n">workQueue</span><span class="o">.</span><span class="na">poll</span><span class="o">(</span><span class="n">keepAliveTime</span><span class="o">,</span> <span class="nc">TimeUnit</span><span class="o">.</span><span class="na">NANOSECONDS</span><span class="o">)</span> <span class="o">:</span>
+                    <span class="n">workQueue</span><span class="o">.</span><span class="na">take</span><span class="o">();</span> <span class="c1">//获取队列中一个任务</span>
+                <span class="k">if</span> <span class="o">(</span><span class="n">r</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span>
+                    <span class="k">return</span> <span class="n">r</span><span class="o">;</span>
+                <span class="n">timedOut</span> <span class="o">=</span> <span class="kc">true</span><span class="o">;</span>
+            <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">InterruptedException</span> <span class="n">retry</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">timedOut</span> <span class="o">=</span> <span class="kc">false</span><span class="o">;</span>
+            <span class="o">}</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+<span class="kd">public</span> <span class="no">E</span> <span class="nf">take</span><span class="o">()</span> <span class="kd">throws</span> <span class="nc">InterruptedException</span> <span class="o">{</span>
+        <span class="no">E</span> <span class="n">x</span><span class="o">;</span>
+        <span class="kt">int</span> <span class="n">c</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="o">;</span>
+        <span class="kd">final</span> <span class="nc">AtomicInteger</span> <span class="n">count</span> <span class="o">=</span> <span class="k">this</span><span class="o">.</span><span class="na">count</span><span class="o">;</span>
+        <span class="kd">final</span> <span class="nc">ReentrantLock</span> <span class="n">takeLock</span> <span class="o">=</span> <span class="k">this</span><span class="o">.</span><span class="na">takeLock</span><span class="o">;</span>
+        <span class="n">takeLock</span><span class="o">.</span><span class="na">lockInterruptibly</span><span class="o">();</span> <span class="c1">// 上锁</span>
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="k">while</span> <span class="o">(</span><span class="n">count</span><span class="o">.</span><span class="na">get</span><span class="o">()</span> <span class="o">==</span> <span class="mi">0</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">notEmpty</span><span class="o">.</span><span class="na">await</span><span class="o">();</span> <span class="c1">//如果队列中没有任务，等待</span>
+            <span class="o">}</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">dequeue</span><span class="o">();</span>
+            <span class="n">c</span> <span class="o">=</span> <span class="n">count</span><span class="o">.</span><span class="na">getAndDecrement</span><span class="o">();</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">c</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="o">)</span>
+                <span class="n">notEmpty</span><span class="o">.</span><span class="na">signal</span><span class="o">();</span>
+        <span class="o">}</span> <span class="k">finally</span> <span class="o">{</span>
+            <span class="n">takeLock</span><span class="o">.</span><span class="na">unlock</span><span class="o">();</span> <span class="c1">// 释放锁</span>
+        <span class="o">}</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">c</span> <span class="o">==</span> <span class="n">capacity</span><span class="o">)</span>
+            <span class="n">signalNotFull</span><span class="o">();</span>
+        <span class="k">return</span> <span class="n">x</span><span class="o">;</span>
+    <span class="o">}</span>
+</pre></table></code></div></div><h2 id="其他">其他</h2><h3 id="volatile">volatile</h3><p>在并发场景这个关键字修饰成员变量很常见，</p><p>主要目的公共变量在被某一个线程修改时，对其他线程可见（实时）</p><h3 id="sunmiscunsafe-高并发相关类api">sun.misc.Unsafe 高并发相关类API</h3><p>线程池使用中，有平凡用到Unsafe类，这个类在高并发中，能做一些原子CAS操作，锁线程，释放线程等。</p><p><code class="language-plaintext highlighter-rouge">sun.misc.Unsafe</code> 类是底层类，openjdk源码中有</p><h4 id="原子操作数据">原子操作数据</h4><p>java.util.concurrent.locks.AbstractQueuedSynchronizer 类中就有保证原子操作的代码，</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+</pre><td class="rouge-code"><pre><span class="kd">protected</span> <span class="kd">final</span> <span class="kt">boolean</span> <span class="nf">compareAndSetState</span><span class="o">(</span><span class="kt">int</span> <span class="n">expect</span><span class="o">,</span> <span class="kt">int</span> <span class="n">update</span><span class="o">)</span> <span class="o">{</span>
+        <span class="c1">// See below for intrinsics setup to support this</span>
+        <span class="k">return</span> <span class="n">unsafe</span><span class="o">.</span><span class="na">compareAndSwapInt</span><span class="o">(</span><span class="k">this</span><span class="o">,</span> <span class="n">stateOffset</span><span class="o">,</span> <span class="n">expect</span><span class="o">,</span> <span class="n">update</span><span class="o">);</span>
+    <span class="o">}</span>
+</pre></table></code></div></div><p>对应Unsafe类的代码:</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+</pre><td class="rouge-code"><pre><span class="c1">//对应的java底层，实际是native方法，对应C++代码</span>
+<span class="cm">/**
+* Atomically update Java variable to &lt;tt&gt;x&lt;/tt&gt; if it is currently
+* holding &lt;tt&gt;expected&lt;/tt&gt;.
+* @return &lt;tt&gt;true&lt;/tt&gt; if successful
+*/</span>
+<span class="kd">public</span> <span class="kd">final</span> <span class="kd">native</span> <span class="kt">boolean</span> <span class="nf">compareAndSwapInt</span><span class="o">(</span><span class="nc">Object</span> <span class="n">o</span><span class="o">,</span> <span class="kt">long</span> <span class="n">offset</span><span class="o">,</span>
+                                              <span class="kt">int</span> <span class="n">expected</span><span class="o">,</span>
+                                              <span class="kt">int</span> <span class="n">x</span><span class="o">);</span>
+</pre></table></code></div></div><p>方法的作用简单来说就是 更新一个值，保证原子性操作 当你要操作一个对象<code class="language-plaintext highlighter-rouge">o</code>的一个成员变量<code class="language-plaintext highlighter-rouge">offset</code>时,修改o.offset， 高并发下为保证准确性，你在操作o.offset的时候，读应该是正确的值，并且中间不能被别的线程修改来保证高并发的环境数据操作有效。</p><p>即 expected 期望值与内存中的值比较是一样的expected == 内存中的值 ，则更新值为 x，返回true代表修改成功</p><p>否则，期望值与内存值不同，说明值被其他线程修改过，不能更新值为x，并返回false，告诉操作者此次原子性修改失败。</p><p>注意一下能知道这是locks包下的类，ReentrantLock锁的底层原理就与unsafe类有关，以及下面的park，unpark。线程可以通过这个原子操作放回true或者false的机制，定义自己获取锁成功还是失败。</p><h4 id="阻塞和唤醒线程">阻塞和唤醒线程</h4><p>ThreadPoolExecute设计在请求队列任务为空时，worker线程可以是等待或者中断的（非销毁状态）。 这种做法避免了没必要的循环，节省了硬件资源，提高线程使用效率，</p><p>线程池的worker角色循环获取队列任务，如果队列中没有任务，worker.run 还是在等待的，不会退出线程，代码中用了<code class="language-plaintext highlighter-rouge">notEmpty.await() </code> 中断此worker线程，放入一个等待线程队列（区别去任务队列）；当有新任务需要时，再<code class="language-plaintext highlighter-rouge">notEmpty.signal()</code>唤醒此线程</p><p>底层分别是</p><h4 id="park">park</h4><p>unsafe.park() 阻塞(停止)当前线程 public native void park(boolean isAbsolute, long time);</p><h4 id="unpark">unpark</h4><p>unsafe.unpark() 唤醒(取消停止)线程 public native void unpark(Object thread);</p><p>这个操作是对应的， 阻塞时，先将thread放入队列,再park， 唤醒时，从队列拿出被阻塞的线程，unpark(thread)唤醒指定线程。</p><p><code class="language-plaintext highlighter-rouge">java.util.concurrent.locks.AbstractQueuedLongSynchronizer.ConditionObject</code> 类中</p><p>通过链表存放线程信息</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+</pre><td class="rouge-code"><pre><span class="c1">// 添加一个阻塞线程</span>
+<span class="kd">private</span> <span class="nc">Node</span> <span class="nf">addConditionWaiter</span><span class="o">()</span> <span class="o">{</span>
+            <span class="nc">Node</span> <span class="n">t</span> <span class="o">=</span> <span class="n">lastWaiter</span><span class="o">;</span>
+            <span class="c1">// If lastWaiter is cancelled, clean out.</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">t</span> <span class="o">!=</span> <span class="kc">null</span> <span class="o">&amp;&amp;</span> <span class="n">t</span><span class="o">.</span><span class="na">waitStatus</span> <span class="o">!=</span> <span class="nc">Node</span><span class="o">.</span><span class="na">CONDITION</span><span class="o">)</span> <span class="o">{</span>
+                <span class="n">unlinkCancelledWaiters</span><span class="o">();</span>
+                <span class="n">t</span> <span class="o">=</span> <span class="n">lastWaiter</span><span class="o">;</span>
+            <span class="o">}</span>
+            <span class="nc">Node</span> <span class="n">node</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">Node</span><span class="o">(</span><span class="nc">Thread</span><span class="o">.</span><span class="na">currentThread</span><span class="o">(),</span> <span class="nc">Node</span><span class="o">.</span><span class="na">CONDITION</span><span class="o">);</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">t</span> <span class="o">==</span> <span class="kc">null</span><span class="o">)</span>
+                <span class="n">firstWaiter</span> <span class="o">=</span> <span class="n">node</span><span class="o">;</span>
+            <span class="k">else</span>
+                <span class="n">t</span><span class="o">.</span><span class="na">nextWaiter</span> <span class="o">=</span> <span class="n">node</span><span class="o">;</span>
+            <span class="n">lastWaiter</span> <span class="o">=</span> <span class="n">node</span><span class="o">;</span> <span class="c1">//将新阻塞的线程放到链表尾部</span>
+            <span class="k">return</span> <span class="n">node</span><span class="o">;</span>
+        <span class="o">}</span>
+
+<span class="c1">// 拿出一个被阻塞的线程</span>
+ <span class="kd">public</span> <span class="kd">final</span> <span class="kt">void</span> <span class="nf">signal</span><span class="o">()</span> <span class="o">{</span>
+            <span class="k">if</span> <span class="o">(!</span><span class="n">isHeldExclusively</span><span class="o">())</span>
+                <span class="k">throw</span> <span class="k">new</span> <span class="nf">IllegalMonitorStateException</span><span class="o">();</span>
+            <span class="nc">Node</span> <span class="n">first</span> <span class="o">=</span> <span class="n">firstWaiter</span><span class="o">;</span> <span class="c1">//链表中第一个阻塞的线程</span>
+            <span class="k">if</span> <span class="o">(</span><span class="n">first</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span>
+                <span class="n">doSignal</span><span class="o">(</span><span class="n">first</span><span class="o">);</span>
+        <span class="o">}</span>
+
+<span class="c1">// 拿到后，唤醒此线程</span>
+<span class="kd">final</span> <span class="kt">boolean</span> <span class="nf">transferForSignal</span><span class="o">(</span><span class="nc">Node</span> <span class="n">node</span><span class="o">)</span> <span class="o">{</span>
+            <span class="nc">LockSupport</span><span class="o">.</span><span class="na">unpark</span><span class="o">(</span><span class="n">node</span><span class="o">.</span><span class="na">thread</span><span class="o">);</span>
+        <span class="k">return</span> <span class="kc">true</span><span class="o">;</span>
+    <span class="o">}</span>
+<span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">unpark</span><span class="o">(</span><span class="nc">Thread</span> <span class="n">thread</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">thread</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span>
+            <span class="no">UNSAFE</span><span class="o">.</span><span class="na">unpark</span><span class="o">(</span><span class="n">thread</span><span class="o">);</span>
+    <span class="o">}</span>
+</pre></table></code></div></div><p>这里要区分park 和 compareAndSwapInt是两个完全不同的东西，可以单独或者组合使用， 比如ReentrantLock实现锁功能这两个都需要</p></div><div class="post-tail-wrapper text-muted"><div class="post-meta mb-3"> <i class="far fa-folder-open fa-fw mr-1"></i> <a href='/categories/technology-%E6%8A%80%E6%9C%AF/'>Technology^技术</a>, <a href='/categories/java/'>Java</a></div><div class="post-tags"> <i class="fa fa-tags fa-fw mr-1"></i> <a href="/tags/writing/" class="post-tag no-text-decoration" >writing</a> <a href="/tags/java/" class="post-tag no-text-decoration" >Java</a> <a href="/tags/tomcat/" class="post-tag no-text-decoration" >Tomcat</a></div><div class="post-tail-bottom d-flex justify-content-between align-items-center mt-3 pt-5 pb-2"><div class="license-wrapper"> This post is licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a> by the author.</div><div class="share-wrapper"> <span class="share-label text-muted mr-1">Share</span> <span class="share-icons"> <a href="https://twitter.com/intent/tweet?text=Tomcat用线程池处理http并发请求 - Narule&url=https://narule.github.io/posts/Tomcat-%E7%94%A8%E7%BA%BF%E7%A8%8B%E6%B1%A0%E5%A4%84%E7%90%86http%E5%B9%B6%E5%8F%91%E8%AF%B7%E6%B1%82/" data-toggle="tooltip" data-placement="top" title="Twitter" target="_blank" rel="noopener" aria-label="Twitter"> <i class="fa-fw fab fa-twitter"></i> </a> <a href="https://www.facebook.com/sharer/sharer.php?title=Tomcat用线程池处理http并发请求 - Narule&u=https://narule.github.io/posts/Tomcat-%E7%94%A8%E7%BA%BF%E7%A8%8B%E6%B1%A0%E5%A4%84%E7%90%86http%E5%B9%B6%E5%8F%91%E8%AF%B7%E6%B1%82/" data-toggle="tooltip" data-placement="top" title="Facebook" target="_blank" rel="noopener" aria-label="Facebook"> <i class="fa-fw fab fa-facebook-square"></i> </a> <a href="https://telegram.me/share?text=Tomcat用线程池处理http并发请求 - Narule&url=https://narule.github.io/posts/Tomcat-%E7%94%A8%E7%BA%BF%E7%A8%8B%E6%B1%A0%E5%A4%84%E7%90%86http%E5%B9%B6%E5%8F%91%E8%AF%B7%E6%B1%82/" data-toggle="tooltip" data-placement="top" title="Telegram" target="_blank" rel="noopener" aria-label="Telegram"> <i class="fa-fw fab fa-telegram"></i> </a> <i class="fa-fw fas fa-link small" onclick="copyLink()" data-toggle="tooltip" data-placement="top" title="Copy link"></i> </span></div></div></div></div></div><div id="panel-wrapper" class="col-xl-3 pl-2 text-muted topbar-down"><div class="access"><div id="access-lastmod" class="post"> <span>Recent Update</span><ul class="post-content pl-0 pb-1 ml-1 mt-2"><li><a href="/posts/%E4%BA%92%E8%81%94%E7%BD%91%E5%A4%87%E5%BF%98%E5%BD%95/">互联网备忘录</a><li><a href="/posts/%E7%94%A8%E6%88%B7%E6%8C%87%E7%BA%B9/">用户指纹</a><li><a href="/posts/%E5%85%B3%E4%BA%8Enetty/">关于netty</a><li><a href="/posts/%E8%87%AA%E5%8A%A8%E6%9B%B4%E6%96%B0%E5%8D%9A%E5%AE%A2%E7%9A%84%E8%AE%BE%E8%AE%A1-The-design-of-an-automatically-updated-blog/">The design of an automatically updated blog | 自动更新博客的设计</a><li><a href="/posts/AbstractQueuedSynchronizer%E6%8A%BD%E8%B1%A1%E7%B1%BB-%E9%98%BB%E5%A1%9E%E9%94%81/">AbstractQueuedSynchronizer抽象类-阻塞锁</a></ul></div><div id="access-tags"> <span>Trending Tags</span><div class="d-flex flex-wrap mt-3 mb-1 mr-3"> <a class="post-tag" href="/tags/writing/">writing</a> <a class="post-tag" href="/tags/java/">Java</a> <a class="post-tag" href="/tags/think/">Think</a> <a class="post-tag" href="/tags/algorithm/">Algorithm</a> <a class="post-tag" href="/tags/docker/">docker</a> <a class="post-tag" href="/tags/spring/">Spring</a> <a class="post-tag" href="/tags/website/">website</a> <a class="post-tag" href="/tags/linux/">Linux</a> <a class="post-tag" href="/tags/map/">map</a> <a class="post-tag" href="/tags/nginx/">nginx</a></div></div></div><div id="toc-wrapper" class="pl-0 pr-4 mb-5"> <span class="pl-3 pt-2 mb-2">Contents</span><nav id="toc" data-toggle="toc"></nav></div></div></div><div class="row"><div class="col-12 col-lg-11 col-xl-8"><div id="post-extend-wrapper" class="pl-1 pr-1 pl-sm-2 pr-sm-2 pl-md-4 pr-md-4"><div id="related-posts" class="mt-5 mb-2 mb-sm-4"><h3 class="pt-2 mt-1 mb-4 ml-1" data-toc-skip>Further Reading</h3><div class="card-deck mb-4"><div class="card"> <a href="/posts/Tomcat-%E5%A6%82%E4%BD%95%E5%BB%BA%E7%AB%8B%E8%BF%9E%E6%8E%A5%E8%8E%B7%E5%8F%96http%E8%AF%B7%E6%B1%82/"><div class="card-body"> <span class="timeago small" > Dec 23, 2020 <i class="unloaded">2020-12-23T22:10:00+08:00</i> </span><h3 class="pt-0 mt-1 mb-3" data-toc-skip>Tomcat如何建立连接获取http请求</h3><div class="text-muted small"><p> tomcat-如何建立连接，获取远程请求 学习探讨tomcat如何建立网络连接协议，并处理客户端过来的请求 建立网络连接，指定http1.1通信协议 tomcat在创建时，会创建连接对象，负责处理客户端的请求，基于socket connector 连接 protocol 协议 endpoint终端 socket插座，端口连接 创建初始化，对象创建顺序 connector &gt;...</p></div></div></a></div><div class="card"> <a href="/posts/AbstractQueuedSynchronizer%E6%8A%BD%E8%B1%A1%E7%B1%BB-%E9%98%BB%E5%A1%9E%E9%94%81/"><div class="card-body"> <span class="timeago small" > Mar 20, 2021 <i class="unloaded">2021-03-20T00:10:00+08:00</i> </span><h3 class="pt-0 mt-1 mb-3" data-toc-skip>AbstractQueuedSynchronizer抽象类-阻塞锁</h3><div class="text-muted small"><p> AbstractQueuedSynchronizer抽象类-阻塞锁 AbstractQueuedSynchronizer是多线程情况下保证代码快有序运行的一种设计，对多线程获取锁进行了抽象， 设计中包括： 1.线程队列（阻塞的线程） 当很多线程竞争锁的时候，排队一个个获取锁，先进先出 2.线程获取锁，成功就执行后面的代码 3.线程释放锁，如果等待队列中有线程，唤醒队列中的线程 ...</p></div></div></a></div><div class="card"> <a href="/posts/%E5%85%B3%E4%BA%8Enetty/"><div class="card-body"> <span class="timeago small" > Jul 11, 2021 <i class="unloaded">2021-07-11T00:20:00+08:00</i> </span><h3 class="pt-0 mt-1 mb-3" data-toc-skip>关于netty</h3><div class="text-muted small"><p> 关于netty netty 是一个非阻塞IO框架，用于Java网络应用开发，特点是异步处理，并发处理能力，netty里面包含有reactor框架的实现，是一个非常高级的框架体系。 netty特性 netty 处理快，更少的资源需求，响应快，可以作为高并发场景服务器的一个选择 reactor 个人理解是 react：响应式， or ：对象，就是响应式框架，netty 就是运用react...</p></div></div></a></div></div></div><div class="post-navigation d-flex justify-content-between"> <a href="/posts/Tomcat-%E5%A6%82%E4%BD%95%E5%BB%BA%E7%AB%8B%E8%BF%9E%E6%8E%A5%E8%8E%B7%E5%8F%96http%E8%AF%B7%E6%B1%82/" class="btn btn-outline-primary"><p>Tomcat如何建立连接获取http请求</p></a> <a href="/posts/Java%E4%B8%AD%E7%9A%84ReentrantLock%E9%94%81/" class="btn btn-outline-primary"><p>ReentrantLock锁</p></a></div><div id="disqus" class="pt-2 pb-2"><p class="font-italic text-center text-muted small"> Comments powered by <a href="https://disqus.com/">Disqus</a>.</p></div><script src="/assets/js/lib/jquery.disqusloader.min.js"></script> <script> var options = { scriptUrl: '//.disqus.com/embed.js', disqusConfig: function() { this.page.url = 'https://narule.github.io/posts/Tomcat-%E7%94%A8%E7%BA%BF%E7%A8%8B%E6%B1%A0%E5%A4%84%E7%90%86http%E5%B9%B6%E5%8F%91%E8%AF%B7%E6%B1%82/'; this.page.identifier = '/posts/Tomcat-%E7%94%A8%E7%BA%BF%E7%A8%8B%E6%B1%A0%E5%A4%84%E7%90%86http%E5%B9%B6%E5%8F%91%E8%AF%B7%E6%B1%82/'; } }; $.disqusLoader('#disqus', options); </script></div></div></div><footer class="d-flex w-100 justify-content-center"><div class="d-flex justify-content-between align-items-center"><div class="footer-left"><p class="mb-0"> © 2025 <a href="https://cnblogs.com/narule">narule</a>. <span data-toggle="tooltip" data-placement="top" title="Except where otherwise noted, the blog posts on this site are licensed under the Creative Commons Attribution 4.0 International (CC BY 4.0) License by the author.">Some rights reserved.</span></p></div><div class="footer-right"><p class="mb-0"> Powered by <a href="https://jekyllrb.com" target="_blank" rel="noopener">Jekyll</a> with <a href="https://github.com/cotes2020/jekyll-theme-chirpy/" target="_blank" rel="noopener">Chirpy</a> theme.</p></div></div></footer></div><div id="search-result-wrapper" class="d-flex justify-content-center unloaded"><div class="col-12 col-xl-11 post-content"><div id="search-hints"><h4 class="text-muted mb-4">Trending Tags</h4><a class="post-tag" href="/tags/writing/">writing</a> <a class="post-tag" href="/tags/java/">Java</a> <a class="post-tag" href="/tags/think/">Think</a> <a class="post-tag" href="/tags/algorithm/">Algorithm</a> <a class="post-tag" href="/tags/docker/">docker</a> <a class="post-tag" href="/tags/spring/">Spring</a> <a class="post-tag" href="/tags/website/">website</a> <a class="post-tag" href="/tags/linux/">Linux</a> <a class="post-tag" href="/tags/map/">map</a> <a class="post-tag" href="/tags/nginx/">nginx</a></div><div id="search-results" class="d-flex flex-wrap justify-content-center text-muted mt-3"></div></div></div></div><div id="mask"></div><a id="back-to-top" href="#" aria-label="back-to-top" class="btn btn-lg btn-box-shadow" role="button"> <i class="fas fa-angle-up"></i> </a> <script src="https://cdn.jsdelivr.net/npm/simple-jekyll-search@1.7.3/dest/simple-jekyll-search.min.js"></script> <script> SimpleJekyllSearch({ searchInput: document.getElementById('search-input'), resultsContainer: document.getElementById('search-results'), json: '/assets/js/data/search.json', searchResultTemplate: '<div class="pl-1 pr-1 pl-sm-2 pr-sm-2 pl-lg-4 pr-lg-4 pl-xl-0 pr-xl-0"> <a href="https://narule.github.io{url}">{title}</a><div class="post-meta d-flex flex-column flex-sm-row text-muted mt-1 mb-1"><div class="mr-sm-4"><i class="far fa-folder fa-fw"></i>{categories}</div><div><i class="fa fa-tag fa-fw"></i>{tags}</div></div><p>{snippet}</p></div>', noResultsText: '<p class="mt-5">Oops! No result founds.</p>' }); </script>

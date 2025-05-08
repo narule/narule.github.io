@@ -1,0 +1,587 @@
+<!DOCTYPE html><html lang="en" ><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no"><meta name="theme" content="Chirpy v2.7.2"><meta name="generator" content="Jekyll v4.2.0" /><meta property="og:title" content="SpringCloud-常用组件介绍" /><meta name="author" content="Narule" /><meta property="og:locale" content="en_US" /><meta name="description" content="分布式系统开发用于分布式环境（多个服务器不在同一个机房，同一个业务服务在多台服务器运行） Spring Cloud 是基于Springboot的分布式云服务架构，SpringCloud的设计就是为了分布式的云环境设计 下面说一些SpringCloud项目在开发中常用的几个组件 说组件之前，将一些分布式相关的概念 CAP定理 指分区容错性 服务可用性 数据一致性，分布式环境： ​ 容错性，允许部分机器故障，但是系统人仍能正常运作 ​ 服务可用性 任何时候调用服务有响应 ​ 数据一致性 任何时候获取数据都一样(访问不同机器节点相同的业务数据) CAP定理因为分布式而存在，离开具体业务相对来说有些抽象，CAP只是说设计系统时的参考思想；但很明显的意思就是为了提高系统稳定性，让原来的一台服务器变成多台，提供相同服务，部分服务器坏了没关系，其他正常服务器能提供服务，从而让使用系统的一方不受影响，觉得这个系统是稳定的，但随之而来的是不同服务器之间数据如何同步，协作，就成了分布式系统要面对的问题。 简单的商城分布式系统，一个服务会运行在多台机器上，买商品下单这一个件事，需要多台服务器中的一个去完成，如果有两台服务器宕机，就去访问没有宕机的服务器（容错性）。下单是调用服务，调用服务这个过程是需要畅通的，不能等很久，下单服务在最多1秒左右就完成。（服务可用性）。下完单，被调用的服务器需要修改商品库存数据，将库存减一(x-1)。在这之后其他服务器访问显示商品库存也是x-1，而不是x（数据一致性）。 SpringCloud-常用组件 SpringCloud分布式组件提高了系统的开发效率，稳定性，可维护性 SpringCloud-Config 服务配置，提供统一配置功能。多个服务，或者服务器启动后，配置文件都在Config中，方便管理（分布式统一配置相关） SpringCloud-Eureka 服务注册，提供注册服务。服务启动后，可以提供自己的服务地址注册到Eureka，暴露出来提供给其他人调用（服务可用性相关） SpringCloud-OpenFeign 服务代理，提供代理调用服务。A服务要调用B服务，可以通过feign，feign使服务调用更方便（远程服务调用相关，有断路器，防止服务雪崩） SpringCloud-Gateway 网关路由服务，提供代理访问转发。 访问narule.net/api 实际访问narule.github.io/api 可以通过Gateway来实现。（访问安全相关） 还有很多其他组件，比如redis相关组件用于数据一致性访问，kafka用于高吞吐消息队列等，本文主要讲上面提到的四个，通过代码简单说明如何使用。 参考代码 example 代码地址：springcloud-example 完整代码请参考springcloud-example，以及maven的完整依赖；如果要启动里面的服务，请务必先启动config-server，因为里面的项目都是通过config统一配置，包括服务用哪个端口访问等参数，； Config Config作为配置中心，能够很方便配置每个分布式系统参数，配置文件可以通过git等仓库专门管理 参考代码：config 测试访问：http://localhost:8888/eureka-server.yml http://localhost:8888/eureka-client.yml example 关键配置是application.yml中配置文件的位置，一般由url指定 dependencies 依赖 serverConfig-pom.xml 1 2 3 4 5 6 &lt;dependencies&gt; &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-config-server&lt;/artifactId&gt; &lt;/dependency&gt; &lt;/dependencies&gt; application.yml 1 2 3 4 5 6 7 8 9 10 11 12 13 14 server: port: 8888 #服务端口 spring: application: name: server-config #服务名 cloud: config: server: git: uri: https://github.com/narule/spring-cloud-config #配置文件地址 #username: narule #password: password refresh: enabled: true ServerConfigApplication 启动程序，除了SpringBootApplication，还需要EnableConfigServer注解: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 package net.narule.spring.cloud.config.server; import org.springframework.boot.SpringApplication; import org.springframework.boot.autoconfigure.SpringBootApplication; import org.springframework.cloud.config.server.EnableConfigServer; @SpringBootApplication @EnableConfigServer public class ConfigServerApplication { public static void main(String[] args) { SpringApplication.run(ConfigServerApplication.class, args); } } 配置读取规则 下文中所有应用程序的配置（包括端口）都是读取的 https://github.com/narule/spring-cloud-config 如果启动程序 spring.application.name=server1-client，并且配置了远程配置，此程序会尝试从远程读取server1-client.yml 文件的配置参数，这是springcloud-config配置规则 客户端应用读取配置只需要依赖spring-cloud-starter-config ，不需要在启动类中写什么注解 client-dependencies 1 2 3 4 &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-starter-config&lt;/artifactId&gt; &lt;/dependency&gt; client-application.yml spring-cloud-starter-config 3.0 有新增配置 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 # client一般指定配置路径 spring: application: name: config-client-one #一定要在本地指定 spring.application.name 才能读取远程配置 cloud: refresh: enabled: true config: uri: - http://localhost:8888 # config-server的访问地址 # 3.0之后新的方式 指定url spring: application: name: config-client-one config: import: - optional:configserver:http://narule.net:8888 #config-server的访问地址 ConfigClientOneApplication 1 2 3 4 5 6 7 8 9 10 11 12 13 package net.narule.spring.cloud.config.client; import org.springframework.boot.SpringApplication; import org.springframework.boot.autoconfigure.SpringBootApplication; @SpringBootApplication public class ConfigClientOneApplication { public static void main(String[] args) { SpringApplication.run(ConfigClientOneApplication.class, args); } } Eureka Eureka提供服务注册，分为注册中心和客户端，注册中心使用@EnableEurekaServer 客户端有producer服务提供者，consumer 服务消费者，在使用时，都使用@EnableEurekaCilent注解，启动服务的时候，将自己的服务信息，ip和端口号等，注册到Eureka服务中心，让其他eurekaclient能通过Eureka服务注册中心获取服务的ip和端口号。 参考代码：eureka 测试访问：https://localhost:1999/eureka-server example ​ 服务端，主要参数是服务的节点，注册节点地址，注册帐号密码（可选） server-dependencies 依赖 1 2 3 4 5 6 7 8 9 10 11 12 13 14 &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-starter-netflix-eureka-server&lt;/artifactId&gt; &lt;/dependency&gt; &lt;!--Spring Boot Actuator，感应服务端变化--&gt; &lt;dependency&gt; &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt; &lt;artifactId&gt;spring-boot-starter-actuator&lt;/artifactId&gt; &lt;/dependency&gt; &lt;!-- security 此模块权限校验 --&gt; &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-starter-security&lt;/artifactId&gt; &lt;/dependency&gt; server-application.yml 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 server: port: 1999 spring: application: name: eureka-server #注册中心访问path eureka: dashboard: path: eureka-server instance: hostname: localhost client: registerWithEureka: false #将自己注册微eurekaclient false fetchRegistry: false serviceUrl: defaultZone: http://${eureka.instance.hostname}:${server.port}/eureka/ #注册节点地址 server: enable-self-preservation: false eviction-interval-timer-in-ms: 10000 #服务刷新时间 EurekaServerApplication 配置文件配置好后，使用@EnableEurekaServer注解即可 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 package com.wunanyu.cloud.eureka; import org.springframework.boot.SpringApplication; import org.springframework.boot.WebApplicationType; import org.springframework.boot.autoconfigure.SpringBootApplication; import org.springframework.boot.builder.SpringApplicationBuilder; import org.springframework.cloud.netflix.eureka.server.EnableEurekaServer; @SpringBootApplication @EnableEurekaServer public class EurekaServerApplication { public static void main(String[] args) { SpringApplication.run(EurekaServerApplication.class, args); } } 客户端 client-dependencies 客户端依赖 1 2 3 4 &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-starter-netflix-eureka-client&lt;/artifactId&gt; &lt;/dependency&gt; client-application.yml 配置文件主要是指定注册中心地址，通过这个配置客户端可以把自己的服务注册到注册中心，或者从注册中心获取其他服务的信息， 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 spring: application: name: eureka-client ## 下面的配置是通过config-server读取，如果没有配置中心，则需要在本地配置文件中写好 server: port: 18080 eureka: #客户端 client: #注册中心地址 service-url: defaultZone: http://localhost:1999/eureka/ #这里是 instance: instanceId: ${spring.application.name}:${vcap.application.instance_id:${spring.application.instance_id:${random.value}}}# 实例id命名规则，这个用于区分同一服务在不同的机器，可应用于分布式锁 prefer-ip-address: true #以IP地址注册到服务中心，相互注册使用IP地址 hostname: localhost EurekaClientApplication 客户端的使用是注解@EnableEurekaClient，有这个注解，启动时会把自己的信息注册到服务中心，当然要配置注册中心节点信息，让客户端知道注册地址在哪。 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 package net.narule.spring.cloud.eureka.client; import org.springframework.boot.SpringApplication; import org.springframework.boot.autoconfigure.SpringBootApplication; import org.springframework.cloud.netflix.eureka.EnableEurekaClient; import org.springframework.web.bind.annotation.PathVariable; import org.springframework.web.bind.annotation.RequestMapping; import org.springframework.web.bind.annotation.RestController; @SpringBootApplication @EnableEurekaClient @RestController public class EurekaClientApplication { public static void main(String[] args) { SpringApplication.run(EurekaClientApplication.class, args); } @RequestMapping(&quot;/request-eureka-client/{id}&quot;) public ResponseResult requestEurekaClient(@PathVariable String id) { return ResponseResult.ok(id + &quot;from-eureka-client&quot;); } } OpenFeign Feign和eureka一样是Nexflix的组件，可以用作接口调用Eureka服务，完成服务于服务之间的调用 参考代码：openfeign 测试访问：http://localhost:1666/request-feign-client example dependencies 依赖 因为feign通过eureka调用服务，并且在分布式环境考虑到负载均衡，所以依赖除了feign，还有ribbon和eureka 1 2 3 4 5 6 7 8 9 10 11 12 13 14 &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-starter-openfeign&lt;/artifactId&gt; &lt;/dependency&gt; &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-starter-netflix-ribbon&lt;/artifactId&gt; &lt;/dependency&gt; &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt; spring-cloud-starter-netflix-eureka-client &lt;/artifactId&gt; &lt;/dependency&gt; FeignClientApplication 要使用feign功能，启动类需要使用注解@EnableFeignClients 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 package net.narule.spring.cloud.feign.client; import org.springframework.beans.factory.annotation.Autowired; import org.springframework.boot.SpringApplication; import org.springframework.boot.autoconfigure.SpringBootApplication; import org.springframework.cloud.openfeign.EnableFeignClients; import org.springframework.cloud.openfeign.FeignClient; import org.springframework.web.bind.annotation.PathVariable; import org.springframework.web.bind.annotation.PostMapping; import org.springframework.web.bind.annotation.RequestMapping; import org.springframework.web.bind.annotation.RestController; @SpringBootApplication @EnableFeignClients @RestController public class FeignClientApplication { public static void main(String[] args) { SpringApplication.run(FeignClientApplication.class, args); } @Autowired private FeignInterFace feignInterFace; @RequestMapping(&quot;/request-feign-client&quot;) public ResponseResult requestFeignClient() { String id = String.valueOf(System.currentTimeMillis()); ResponseResult reuqestEurekaClient = feignInterFace.reuqestEurekaClient(id); return ResponseResult.ok(reuqestEurekaClient); } @FeignClient(&quot;eureka-client&quot;) interface FeignInterFace { @RequestMapping(value = &quot;/request-eureka-client/{id}&quot;) public ResponseResult reuqestEurekaClient(@PathVariable(&quot;id&quot;) String id); } } FeignInterface Feign使用时，只需要写接口，并在注解上配好url即可，不需要写代码实现方法， @FeignClient(“eureka-client”)表示有服务名叫eureka-client，方法上的value = “/request-eureka-client/{id}” 说明eureka-client服务有/request-eureka-client/{id}的请求路径，这是要对应的，并且eureka-client服务注册到eureka注册中心，不然服务调用失败。 1 2 3 4 5 6 7 @FeignClient(&quot;eureka-client&quot;) interface FeignInterFace { @RequestMapping(value = &quot;/request-eureka-client/{id}&quot;) public ResponseResult reuqestEurekaClient(@PathVariable(&quot;id&quot;) String id); } feign-client.yml 配置文件需要指定eureka的注册节点，因为feign最终通过eureka获取服务信息来完成接口访问 1 2 3 4 5 6 7 8 9 server: port: 1666 eureka: #客户端 client: #注册中心地址 service-url: defaultZone: http://localhost:1999/eureka/ Gateway gateway是网关组件，此组件可以用来转发请求，设置路由，比较灵活。 如果有服务访问路径是http://localhost:1666/request-feign-client 我们可以因为一些个性化需求改变路由 通过gateway可以让访问http://localhost:12000/api/feign/request-feign-client 等同于上面的访问路径 参考代码：gateway 测试访问：http://localhost:12000/api/feign/request-feign-client example gateway-dependencies gateway作为网关服务，可以搭配eureka使用 1 2 3 4 5 6 7 8 9 10 &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-starter-gateway&lt;/artifactId&gt; &lt;/dependency&gt; &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt; spring-cloud-starter-netflix-eureka-client &lt;/artifactId&gt; &lt;/dependency&gt; GatewayServerApplication 1 2 3 4 5 6 7 @SpringBootApplication public class GatewayServerApplication { public static void main(String[] args) { SpringApplication.run(GatewayServerApplication.class, args); } } gateway-server.yml 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 server: port: 12000 spring: cloud: gateway: routes: # 路由ID（一个路由配置一个ID） - id: eureka-c # 通过注册中心来查找服务（lb代表从注册中心获取服务，并且负载均衡） uri: lb://eureka-client/ # 匹配到的以/api/eureka/ 通过eureka访问 eureka-client/** predicates: - Path=/api/eureka/** # 去掉匹配到的路径的前2级 这里也就是 /api/eureka filters: - StripPrefix=2 - id: feign-c uri: lb://feign-client/ # 匹配到的以/api/feign/开头的路径都转发到feign-client的服务，相当于访问 lb://feign-client/** predicates: - Path=/api/feign/** # 去掉匹配到的路径的前2级 这里也就是 /api/feign filters: - StripPrefix=2 discovery: locator: enabled: true lowerCaseServiceId: true eureka: #客户端 client: #注册中心地址 service-url: defaultZone: http://localhost:1999/eureka/" /><meta property="og:description" content="分布式系统开发用于分布式环境（多个服务器不在同一个机房，同一个业务服务在多台服务器运行） Spring Cloud 是基于Springboot的分布式云服务架构，SpringCloud的设计就是为了分布式的云环境设计 下面说一些SpringCloud项目在开发中常用的几个组件 说组件之前，将一些分布式相关的概念 CAP定理 指分区容错性 服务可用性 数据一致性，分布式环境： ​ 容错性，允许部分机器故障，但是系统人仍能正常运作 ​ 服务可用性 任何时候调用服务有响应 ​ 数据一致性 任何时候获取数据都一样(访问不同机器节点相同的业务数据) CAP定理因为分布式而存在，离开具体业务相对来说有些抽象，CAP只是说设计系统时的参考思想；但很明显的意思就是为了提高系统稳定性，让原来的一台服务器变成多台，提供相同服务，部分服务器坏了没关系，其他正常服务器能提供服务，从而让使用系统的一方不受影响，觉得这个系统是稳定的，但随之而来的是不同服务器之间数据如何同步，协作，就成了分布式系统要面对的问题。 简单的商城分布式系统，一个服务会运行在多台机器上，买商品下单这一个件事，需要多台服务器中的一个去完成，如果有两台服务器宕机，就去访问没有宕机的服务器（容错性）。下单是调用服务，调用服务这个过程是需要畅通的，不能等很久，下单服务在最多1秒左右就完成。（服务可用性）。下完单，被调用的服务器需要修改商品库存数据，将库存减一(x-1)。在这之后其他服务器访问显示商品库存也是x-1，而不是x（数据一致性）。 SpringCloud-常用组件 SpringCloud分布式组件提高了系统的开发效率，稳定性，可维护性 SpringCloud-Config 服务配置，提供统一配置功能。多个服务，或者服务器启动后，配置文件都在Config中，方便管理（分布式统一配置相关） SpringCloud-Eureka 服务注册，提供注册服务。服务启动后，可以提供自己的服务地址注册到Eureka，暴露出来提供给其他人调用（服务可用性相关） SpringCloud-OpenFeign 服务代理，提供代理调用服务。A服务要调用B服务，可以通过feign，feign使服务调用更方便（远程服务调用相关，有断路器，防止服务雪崩） SpringCloud-Gateway 网关路由服务，提供代理访问转发。 访问narule.net/api 实际访问narule.github.io/api 可以通过Gateway来实现。（访问安全相关） 还有很多其他组件，比如redis相关组件用于数据一致性访问，kafka用于高吞吐消息队列等，本文主要讲上面提到的四个，通过代码简单说明如何使用。 参考代码 example 代码地址：springcloud-example 完整代码请参考springcloud-example，以及maven的完整依赖；如果要启动里面的服务，请务必先启动config-server，因为里面的项目都是通过config统一配置，包括服务用哪个端口访问等参数，； Config Config作为配置中心，能够很方便配置每个分布式系统参数，配置文件可以通过git等仓库专门管理 参考代码：config 测试访问：http://localhost:8888/eureka-server.yml http://localhost:8888/eureka-client.yml example 关键配置是application.yml中配置文件的位置，一般由url指定 dependencies 依赖 serverConfig-pom.xml 1 2 3 4 5 6 &lt;dependencies&gt; &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-config-server&lt;/artifactId&gt; &lt;/dependency&gt; &lt;/dependencies&gt; application.yml 1 2 3 4 5 6 7 8 9 10 11 12 13 14 server: port: 8888 #服务端口 spring: application: name: server-config #服务名 cloud: config: server: git: uri: https://github.com/narule/spring-cloud-config #配置文件地址 #username: narule #password: password refresh: enabled: true ServerConfigApplication 启动程序，除了SpringBootApplication，还需要EnableConfigServer注解: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 package net.narule.spring.cloud.config.server; import org.springframework.boot.SpringApplication; import org.springframework.boot.autoconfigure.SpringBootApplication; import org.springframework.cloud.config.server.EnableConfigServer; @SpringBootApplication @EnableConfigServer public class ConfigServerApplication { public static void main(String[] args) { SpringApplication.run(ConfigServerApplication.class, args); } } 配置读取规则 下文中所有应用程序的配置（包括端口）都是读取的 https://github.com/narule/spring-cloud-config 如果启动程序 spring.application.name=server1-client，并且配置了远程配置，此程序会尝试从远程读取server1-client.yml 文件的配置参数，这是springcloud-config配置规则 客户端应用读取配置只需要依赖spring-cloud-starter-config ，不需要在启动类中写什么注解 client-dependencies 1 2 3 4 &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-starter-config&lt;/artifactId&gt; &lt;/dependency&gt; client-application.yml spring-cloud-starter-config 3.0 有新增配置 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 # client一般指定配置路径 spring: application: name: config-client-one #一定要在本地指定 spring.application.name 才能读取远程配置 cloud: refresh: enabled: true config: uri: - http://localhost:8888 # config-server的访问地址 # 3.0之后新的方式 指定url spring: application: name: config-client-one config: import: - optional:configserver:http://narule.net:8888 #config-server的访问地址 ConfigClientOneApplication 1 2 3 4 5 6 7 8 9 10 11 12 13 package net.narule.spring.cloud.config.client; import org.springframework.boot.SpringApplication; import org.springframework.boot.autoconfigure.SpringBootApplication; @SpringBootApplication public class ConfigClientOneApplication { public static void main(String[] args) { SpringApplication.run(ConfigClientOneApplication.class, args); } } Eureka Eureka提供服务注册，分为注册中心和客户端，注册中心使用@EnableEurekaServer 客户端有producer服务提供者，consumer 服务消费者，在使用时，都使用@EnableEurekaCilent注解，启动服务的时候，将自己的服务信息，ip和端口号等，注册到Eureka服务中心，让其他eurekaclient能通过Eureka服务注册中心获取服务的ip和端口号。 参考代码：eureka 测试访问：https://localhost:1999/eureka-server example ​ 服务端，主要参数是服务的节点，注册节点地址，注册帐号密码（可选） server-dependencies 依赖 1 2 3 4 5 6 7 8 9 10 11 12 13 14 &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-starter-netflix-eureka-server&lt;/artifactId&gt; &lt;/dependency&gt; &lt;!--Spring Boot Actuator，感应服务端变化--&gt; &lt;dependency&gt; &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt; &lt;artifactId&gt;spring-boot-starter-actuator&lt;/artifactId&gt; &lt;/dependency&gt; &lt;!-- security 此模块权限校验 --&gt; &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-starter-security&lt;/artifactId&gt; &lt;/dependency&gt; server-application.yml 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 server: port: 1999 spring: application: name: eureka-server #注册中心访问path eureka: dashboard: path: eureka-server instance: hostname: localhost client: registerWithEureka: false #将自己注册微eurekaclient false fetchRegistry: false serviceUrl: defaultZone: http://${eureka.instance.hostname}:${server.port}/eureka/ #注册节点地址 server: enable-self-preservation: false eviction-interval-timer-in-ms: 10000 #服务刷新时间 EurekaServerApplication 配置文件配置好后，使用@EnableEurekaServer注解即可 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 package com.wunanyu.cloud.eureka; import org.springframework.boot.SpringApplication; import org.springframework.boot.WebApplicationType; import org.springframework.boot.autoconfigure.SpringBootApplication; import org.springframework.boot.builder.SpringApplicationBuilder; import org.springframework.cloud.netflix.eureka.server.EnableEurekaServer; @SpringBootApplication @EnableEurekaServer public class EurekaServerApplication { public static void main(String[] args) { SpringApplication.run(EurekaServerApplication.class, args); } } 客户端 client-dependencies 客户端依赖 1 2 3 4 &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-starter-netflix-eureka-client&lt;/artifactId&gt; &lt;/dependency&gt; client-application.yml 配置文件主要是指定注册中心地址，通过这个配置客户端可以把自己的服务注册到注册中心，或者从注册中心获取其他服务的信息， 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 spring: application: name: eureka-client ## 下面的配置是通过config-server读取，如果没有配置中心，则需要在本地配置文件中写好 server: port: 18080 eureka: #客户端 client: #注册中心地址 service-url: defaultZone: http://localhost:1999/eureka/ #这里是 instance: instanceId: ${spring.application.name}:${vcap.application.instance_id:${spring.application.instance_id:${random.value}}}# 实例id命名规则，这个用于区分同一服务在不同的机器，可应用于分布式锁 prefer-ip-address: true #以IP地址注册到服务中心，相互注册使用IP地址 hostname: localhost EurekaClientApplication 客户端的使用是注解@EnableEurekaClient，有这个注解，启动时会把自己的信息注册到服务中心，当然要配置注册中心节点信息，让客户端知道注册地址在哪。 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 package net.narule.spring.cloud.eureka.client; import org.springframework.boot.SpringApplication; import org.springframework.boot.autoconfigure.SpringBootApplication; import org.springframework.cloud.netflix.eureka.EnableEurekaClient; import org.springframework.web.bind.annotation.PathVariable; import org.springframework.web.bind.annotation.RequestMapping; import org.springframework.web.bind.annotation.RestController; @SpringBootApplication @EnableEurekaClient @RestController public class EurekaClientApplication { public static void main(String[] args) { SpringApplication.run(EurekaClientApplication.class, args); } @RequestMapping(&quot;/request-eureka-client/{id}&quot;) public ResponseResult requestEurekaClient(@PathVariable String id) { return ResponseResult.ok(id + &quot;from-eureka-client&quot;); } } OpenFeign Feign和eureka一样是Nexflix的组件，可以用作接口调用Eureka服务，完成服务于服务之间的调用 参考代码：openfeign 测试访问：http://localhost:1666/request-feign-client example dependencies 依赖 因为feign通过eureka调用服务，并且在分布式环境考虑到负载均衡，所以依赖除了feign，还有ribbon和eureka 1 2 3 4 5 6 7 8 9 10 11 12 13 14 &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-starter-openfeign&lt;/artifactId&gt; &lt;/dependency&gt; &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-starter-netflix-ribbon&lt;/artifactId&gt; &lt;/dependency&gt; &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt; spring-cloud-starter-netflix-eureka-client &lt;/artifactId&gt; &lt;/dependency&gt; FeignClientApplication 要使用feign功能，启动类需要使用注解@EnableFeignClients 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 package net.narule.spring.cloud.feign.client; import org.springframework.beans.factory.annotation.Autowired; import org.springframework.boot.SpringApplication; import org.springframework.boot.autoconfigure.SpringBootApplication; import org.springframework.cloud.openfeign.EnableFeignClients; import org.springframework.cloud.openfeign.FeignClient; import org.springframework.web.bind.annotation.PathVariable; import org.springframework.web.bind.annotation.PostMapping; import org.springframework.web.bind.annotation.RequestMapping; import org.springframework.web.bind.annotation.RestController; @SpringBootApplication @EnableFeignClients @RestController public class FeignClientApplication { public static void main(String[] args) { SpringApplication.run(FeignClientApplication.class, args); } @Autowired private FeignInterFace feignInterFace; @RequestMapping(&quot;/request-feign-client&quot;) public ResponseResult requestFeignClient() { String id = String.valueOf(System.currentTimeMillis()); ResponseResult reuqestEurekaClient = feignInterFace.reuqestEurekaClient(id); return ResponseResult.ok(reuqestEurekaClient); } @FeignClient(&quot;eureka-client&quot;) interface FeignInterFace { @RequestMapping(value = &quot;/request-eureka-client/{id}&quot;) public ResponseResult reuqestEurekaClient(@PathVariable(&quot;id&quot;) String id); } } FeignInterface Feign使用时，只需要写接口，并在注解上配好url即可，不需要写代码实现方法， @FeignClient(“eureka-client”)表示有服务名叫eureka-client，方法上的value = “/request-eureka-client/{id}” 说明eureka-client服务有/request-eureka-client/{id}的请求路径，这是要对应的，并且eureka-client服务注册到eureka注册中心，不然服务调用失败。 1 2 3 4 5 6 7 @FeignClient(&quot;eureka-client&quot;) interface FeignInterFace { @RequestMapping(value = &quot;/request-eureka-client/{id}&quot;) public ResponseResult reuqestEurekaClient(@PathVariable(&quot;id&quot;) String id); } feign-client.yml 配置文件需要指定eureka的注册节点，因为feign最终通过eureka获取服务信息来完成接口访问 1 2 3 4 5 6 7 8 9 server: port: 1666 eureka: #客户端 client: #注册中心地址 service-url: defaultZone: http://localhost:1999/eureka/ Gateway gateway是网关组件，此组件可以用来转发请求，设置路由，比较灵活。 如果有服务访问路径是http://localhost:1666/request-feign-client 我们可以因为一些个性化需求改变路由 通过gateway可以让访问http://localhost:12000/api/feign/request-feign-client 等同于上面的访问路径 参考代码：gateway 测试访问：http://localhost:12000/api/feign/request-feign-client example gateway-dependencies gateway作为网关服务，可以搭配eureka使用 1 2 3 4 5 6 7 8 9 10 &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-starter-gateway&lt;/artifactId&gt; &lt;/dependency&gt; &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt; spring-cloud-starter-netflix-eureka-client &lt;/artifactId&gt; &lt;/dependency&gt; GatewayServerApplication 1 2 3 4 5 6 7 @SpringBootApplication public class GatewayServerApplication { public static void main(String[] args) { SpringApplication.run(GatewayServerApplication.class, args); } } gateway-server.yml 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 server: port: 12000 spring: cloud: gateway: routes: # 路由ID（一个路由配置一个ID） - id: eureka-c # 通过注册中心来查找服务（lb代表从注册中心获取服务，并且负载均衡） uri: lb://eureka-client/ # 匹配到的以/api/eureka/ 通过eureka访问 eureka-client/** predicates: - Path=/api/eureka/** # 去掉匹配到的路径的前2级 这里也就是 /api/eureka filters: - StripPrefix=2 - id: feign-c uri: lb://feign-client/ # 匹配到的以/api/feign/开头的路径都转发到feign-client的服务，相当于访问 lb://feign-client/** predicates: - Path=/api/feign/** # 去掉匹配到的路径的前2级 这里也就是 /api/feign filters: - StripPrefix=2 discovery: locator: enabled: true lowerCaseServiceId: true eureka: #客户端 client: #注册中心地址 service-url: defaultZone: http://localhost:1999/eureka/" /><link rel="canonical" href="https://narule.github.io/posts/SpringCloud-%E5%B8%B8%E7%94%A8%E7%BB%84%E4%BB%B6%E4%BB%8B%E7%BB%8D/" /><meta property="og:url" content="https://narule.github.io/posts/SpringCloud-%E5%B8%B8%E7%94%A8%E7%BB%84%E4%BB%B6%E4%BB%8B%E7%BB%8D/" /><meta property="og:site_name" content="Narule" /><meta property="og:type" content="article" /><meta property="article:published_time" content="2021-01-31T22:12:00+08:00" /><meta name="twitter:card" content="summary" /><meta property="twitter:title" content="SpringCloud-常用组件介绍" /><meta name="twitter:site" content="@no_twitter" /><meta name="twitter:creator" content="@Narule" /><meta name="google-site-verification" content="google_meta_tag_verification" /> <script type="application/ld+json"> {"description":"分布式系统开发用于分布式环境（多个服务器不在同一个机房，同一个业务服务在多台服务器运行） Spring Cloud 是基于Springboot的分布式云服务架构，SpringCloud的设计就是为了分布式的云环境设计 下面说一些SpringCloud项目在开发中常用的几个组件 说组件之前，将一些分布式相关的概念 CAP定理 指分区容错性 服务可用性 数据一致性，分布式环境： ​ 容错性，允许部分机器故障，但是系统人仍能正常运作 ​ 服务可用性 任何时候调用服务有响应 ​ 数据一致性 任何时候获取数据都一样(访问不同机器节点相同的业务数据) CAP定理因为分布式而存在，离开具体业务相对来说有些抽象，CAP只是说设计系统时的参考思想；但很明显的意思就是为了提高系统稳定性，让原来的一台服务器变成多台，提供相同服务，部分服务器坏了没关系，其他正常服务器能提供服务，从而让使用系统的一方不受影响，觉得这个系统是稳定的，但随之而来的是不同服务器之间数据如何同步，协作，就成了分布式系统要面对的问题。 简单的商城分布式系统，一个服务会运行在多台机器上，买商品下单这一个件事，需要多台服务器中的一个去完成，如果有两台服务器宕机，就去访问没有宕机的服务器（容错性）。下单是调用服务，调用服务这个过程是需要畅通的，不能等很久，下单服务在最多1秒左右就完成。（服务可用性）。下完单，被调用的服务器需要修改商品库存数据，将库存减一(x-1)。在这之后其他服务器访问显示商品库存也是x-1，而不是x（数据一致性）。 SpringCloud-常用组件 SpringCloud分布式组件提高了系统的开发效率，稳定性，可维护性 SpringCloud-Config 服务配置，提供统一配置功能。多个服务，或者服务器启动后，配置文件都在Config中，方便管理（分布式统一配置相关） SpringCloud-Eureka 服务注册，提供注册服务。服务启动后，可以提供自己的服务地址注册到Eureka，暴露出来提供给其他人调用（服务可用性相关） SpringCloud-OpenFeign 服务代理，提供代理调用服务。A服务要调用B服务，可以通过feign，feign使服务调用更方便（远程服务调用相关，有断路器，防止服务雪崩） SpringCloud-Gateway 网关路由服务，提供代理访问转发。 访问narule.net/api 实际访问narule.github.io/api 可以通过Gateway来实现。（访问安全相关） 还有很多其他组件，比如redis相关组件用于数据一致性访问，kafka用于高吞吐消息队列等，本文主要讲上面提到的四个，通过代码简单说明如何使用。 参考代码 example 代码地址：springcloud-example 完整代码请参考springcloud-example，以及maven的完整依赖；如果要启动里面的服务，请务必先启动config-server，因为里面的项目都是通过config统一配置，包括服务用哪个端口访问等参数，； Config Config作为配置中心，能够很方便配置每个分布式系统参数，配置文件可以通过git等仓库专门管理 参考代码：config 测试访问：http://localhost:8888/eureka-server.yml http://localhost:8888/eureka-client.yml example 关键配置是application.yml中配置文件的位置，一般由url指定 dependencies 依赖 serverConfig-pom.xml 1 2 3 4 5 6 &lt;dependencies&gt; &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-config-server&lt;/artifactId&gt; &lt;/dependency&gt; &lt;/dependencies&gt; application.yml 1 2 3 4 5 6 7 8 9 10 11 12 13 14 server: port: 8888 #服务端口 spring: application: name: server-config #服务名 cloud: config: server: git: uri: https://github.com/narule/spring-cloud-config #配置文件地址 #username: narule #password: password refresh: enabled: true ServerConfigApplication 启动程序，除了SpringBootApplication，还需要EnableConfigServer注解: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 package net.narule.spring.cloud.config.server; import org.springframework.boot.SpringApplication; import org.springframework.boot.autoconfigure.SpringBootApplication; import org.springframework.cloud.config.server.EnableConfigServer; @SpringBootApplication @EnableConfigServer public class ConfigServerApplication { public static void main(String[] args) { SpringApplication.run(ConfigServerApplication.class, args); } } 配置读取规则 下文中所有应用程序的配置（包括端口）都是读取的 https://github.com/narule/spring-cloud-config 如果启动程序 spring.application.name=server1-client，并且配置了远程配置，此程序会尝试从远程读取server1-client.yml 文件的配置参数，这是springcloud-config配置规则 客户端应用读取配置只需要依赖spring-cloud-starter-config ，不需要在启动类中写什么注解 client-dependencies 1 2 3 4 &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-starter-config&lt;/artifactId&gt; &lt;/dependency&gt; client-application.yml spring-cloud-starter-config 3.0 有新增配置 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 # client一般指定配置路径 spring: application: name: config-client-one #一定要在本地指定 spring.application.name 才能读取远程配置 cloud: refresh: enabled: true config: uri: - http://localhost:8888 # config-server的访问地址 # 3.0之后新的方式 指定url spring: application: name: config-client-one config: import: - optional:configserver:http://narule.net:8888 #config-server的访问地址 ConfigClientOneApplication 1 2 3 4 5 6 7 8 9 10 11 12 13 package net.narule.spring.cloud.config.client; import org.springframework.boot.SpringApplication; import org.springframework.boot.autoconfigure.SpringBootApplication; @SpringBootApplication public class ConfigClientOneApplication { public static void main(String[] args) { SpringApplication.run(ConfigClientOneApplication.class, args); } } Eureka Eureka提供服务注册，分为注册中心和客户端，注册中心使用@EnableEurekaServer 客户端有producer服务提供者，consumer 服务消费者，在使用时，都使用@EnableEurekaCilent注解，启动服务的时候，将自己的服务信息，ip和端口号等，注册到Eureka服务中心，让其他eurekaclient能通过Eureka服务注册中心获取服务的ip和端口号。 参考代码：eureka 测试访问：https://localhost:1999/eureka-server example ​ 服务端，主要参数是服务的节点，注册节点地址，注册帐号密码（可选） server-dependencies 依赖 1 2 3 4 5 6 7 8 9 10 11 12 13 14 &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-starter-netflix-eureka-server&lt;/artifactId&gt; &lt;/dependency&gt; &lt;!--Spring Boot Actuator，感应服务端变化--&gt; &lt;dependency&gt; &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt; &lt;artifactId&gt;spring-boot-starter-actuator&lt;/artifactId&gt; &lt;/dependency&gt; &lt;!-- security 此模块权限校验 --&gt; &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-starter-security&lt;/artifactId&gt; &lt;/dependency&gt; server-application.yml 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 server: port: 1999 spring: application: name: eureka-server #注册中心访问path eureka: dashboard: path: eureka-server instance: hostname: localhost client: registerWithEureka: false #将自己注册微eurekaclient false fetchRegistry: false serviceUrl: defaultZone: http://${eureka.instance.hostname}:${server.port}/eureka/ #注册节点地址 server: enable-self-preservation: false eviction-interval-timer-in-ms: 10000 #服务刷新时间 EurekaServerApplication 配置文件配置好后，使用@EnableEurekaServer注解即可 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 package com.wunanyu.cloud.eureka; import org.springframework.boot.SpringApplication; import org.springframework.boot.WebApplicationType; import org.springframework.boot.autoconfigure.SpringBootApplication; import org.springframework.boot.builder.SpringApplicationBuilder; import org.springframework.cloud.netflix.eureka.server.EnableEurekaServer; @SpringBootApplication @EnableEurekaServer public class EurekaServerApplication { public static void main(String[] args) { SpringApplication.run(EurekaServerApplication.class, args); } } 客户端 client-dependencies 客户端依赖 1 2 3 4 &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-starter-netflix-eureka-client&lt;/artifactId&gt; &lt;/dependency&gt; client-application.yml 配置文件主要是指定注册中心地址，通过这个配置客户端可以把自己的服务注册到注册中心，或者从注册中心获取其他服务的信息， 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 spring: application: name: eureka-client ## 下面的配置是通过config-server读取，如果没有配置中心，则需要在本地配置文件中写好 server: port: 18080 eureka: #客户端 client: #注册中心地址 service-url: defaultZone: http://localhost:1999/eureka/ #这里是 instance: instanceId: ${spring.application.name}:${vcap.application.instance_id:${spring.application.instance_id:${random.value}}}# 实例id命名规则，这个用于区分同一服务在不同的机器，可应用于分布式锁 prefer-ip-address: true #以IP地址注册到服务中心，相互注册使用IP地址 hostname: localhost EurekaClientApplication 客户端的使用是注解@EnableEurekaClient，有这个注解，启动时会把自己的信息注册到服务中心，当然要配置注册中心节点信息，让客户端知道注册地址在哪。 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 package net.narule.spring.cloud.eureka.client; import org.springframework.boot.SpringApplication; import org.springframework.boot.autoconfigure.SpringBootApplication; import org.springframework.cloud.netflix.eureka.EnableEurekaClient; import org.springframework.web.bind.annotation.PathVariable; import org.springframework.web.bind.annotation.RequestMapping; import org.springframework.web.bind.annotation.RestController; @SpringBootApplication @EnableEurekaClient @RestController public class EurekaClientApplication { public static void main(String[] args) { SpringApplication.run(EurekaClientApplication.class, args); } @RequestMapping(&quot;/request-eureka-client/{id}&quot;) public ResponseResult requestEurekaClient(@PathVariable String id) { return ResponseResult.ok(id + &quot;from-eureka-client&quot;); } } OpenFeign Feign和eureka一样是Nexflix的组件，可以用作接口调用Eureka服务，完成服务于服务之间的调用 参考代码：openfeign 测试访问：http://localhost:1666/request-feign-client example dependencies 依赖 因为feign通过eureka调用服务，并且在分布式环境考虑到负载均衡，所以依赖除了feign，还有ribbon和eureka 1 2 3 4 5 6 7 8 9 10 11 12 13 14 &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-starter-openfeign&lt;/artifactId&gt; &lt;/dependency&gt; &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-starter-netflix-ribbon&lt;/artifactId&gt; &lt;/dependency&gt; &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt; spring-cloud-starter-netflix-eureka-client &lt;/artifactId&gt; &lt;/dependency&gt; FeignClientApplication 要使用feign功能，启动类需要使用注解@EnableFeignClients 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 package net.narule.spring.cloud.feign.client; import org.springframework.beans.factory.annotation.Autowired; import org.springframework.boot.SpringApplication; import org.springframework.boot.autoconfigure.SpringBootApplication; import org.springframework.cloud.openfeign.EnableFeignClients; import org.springframework.cloud.openfeign.FeignClient; import org.springframework.web.bind.annotation.PathVariable; import org.springframework.web.bind.annotation.PostMapping; import org.springframework.web.bind.annotation.RequestMapping; import org.springframework.web.bind.annotation.RestController; @SpringBootApplication @EnableFeignClients @RestController public class FeignClientApplication { public static void main(String[] args) { SpringApplication.run(FeignClientApplication.class, args); } @Autowired private FeignInterFace feignInterFace; @RequestMapping(&quot;/request-feign-client&quot;) public ResponseResult requestFeignClient() { String id = String.valueOf(System.currentTimeMillis()); ResponseResult reuqestEurekaClient = feignInterFace.reuqestEurekaClient(id); return ResponseResult.ok(reuqestEurekaClient); } @FeignClient(&quot;eureka-client&quot;) interface FeignInterFace { @RequestMapping(value = &quot;/request-eureka-client/{id}&quot;) public ResponseResult reuqestEurekaClient(@PathVariable(&quot;id&quot;) String id); } } FeignInterface Feign使用时，只需要写接口，并在注解上配好url即可，不需要写代码实现方法， @FeignClient(“eureka-client”)表示有服务名叫eureka-client，方法上的value = “/request-eureka-client/{id}” 说明eureka-client服务有/request-eureka-client/{id}的请求路径，这是要对应的，并且eureka-client服务注册到eureka注册中心，不然服务调用失败。 1 2 3 4 5 6 7 @FeignClient(&quot;eureka-client&quot;) interface FeignInterFace { @RequestMapping(value = &quot;/request-eureka-client/{id}&quot;) public ResponseResult reuqestEurekaClient(@PathVariable(&quot;id&quot;) String id); } feign-client.yml 配置文件需要指定eureka的注册节点，因为feign最终通过eureka获取服务信息来完成接口访问 1 2 3 4 5 6 7 8 9 server: port: 1666 eureka: #客户端 client: #注册中心地址 service-url: defaultZone: http://localhost:1999/eureka/ Gateway gateway是网关组件，此组件可以用来转发请求，设置路由，比较灵活。 如果有服务访问路径是http://localhost:1666/request-feign-client 我们可以因为一些个性化需求改变路由 通过gateway可以让访问http://localhost:12000/api/feign/request-feign-client 等同于上面的访问路径 参考代码：gateway 测试访问：http://localhost:12000/api/feign/request-feign-client example gateway-dependencies gateway作为网关服务，可以搭配eureka使用 1 2 3 4 5 6 7 8 9 10 &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt;spring-cloud-starter-gateway&lt;/artifactId&gt; &lt;/dependency&gt; &lt;dependency&gt; &lt;groupId&gt;org.springframework.cloud&lt;/groupId&gt; &lt;artifactId&gt; spring-cloud-starter-netflix-eureka-client &lt;/artifactId&gt; &lt;/dependency&gt; GatewayServerApplication 1 2 3 4 5 6 7 @SpringBootApplication public class GatewayServerApplication { public static void main(String[] args) { SpringApplication.run(GatewayServerApplication.class, args); } } gateway-server.yml 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 server: port: 12000 spring: cloud: gateway: routes: # 路由ID（一个路由配置一个ID） - id: eureka-c # 通过注册中心来查找服务（lb代表从注册中心获取服务，并且负载均衡） uri: lb://eureka-client/ # 匹配到的以/api/eureka/ 通过eureka访问 eureka-client/** predicates: - Path=/api/eureka/** # 去掉匹配到的路径的前2级 这里也就是 /api/eureka filters: - StripPrefix=2 - id: feign-c uri: lb://feign-client/ # 匹配到的以/api/feign/开头的路径都转发到feign-client的服务，相当于访问 lb://feign-client/** predicates: - Path=/api/feign/** # 去掉匹配到的路径的前2级 这里也就是 /api/feign filters: - StripPrefix=2 discovery: locator: enabled: true lowerCaseServiceId: true eureka: #客户端 client: #注册中心地址 service-url: defaultZone: http://localhost:1999/eureka/","headline":"SpringCloud-常用组件介绍","dateModified":"2021-02-01T15:34:53+08:00","datePublished":"2021-01-31T22:12:00+08:00","mainEntityOfPage":{"@type":"WebPage","@id":"https://narule.github.io/posts/SpringCloud-%E5%B8%B8%E7%94%A8%E7%BB%84%E4%BB%B6%E4%BB%8B%E7%BB%8D/"},"url":"https://narule.github.io/posts/SpringCloud-%E5%B8%B8%E7%94%A8%E7%BB%84%E4%BB%B6%E4%BB%8B%E7%BB%8D/","author":{"@type":"Person","name":"Narule"},"@type":"BlogPosting","@context":"https://schema.org"}</script><title>SpringCloud-常用组件介绍 | Narule</title><link rel="shortcut icon" href="/assets/img/favicons/favicon.ico" type="image/x-icon"><link rel="icon" href="/assets/img/favicons/favicon.ico" type="image/x-icon"><link rel="apple-touch-icon" href="/assets/img/favicons/apple-icon.png"><link rel="apple-touch-icon" href="/assets/img/favicons/apple-icon-precomposed.png"><link rel="apple-touch-icon" sizes="57x57" href="/assets/img/favicons/apple-icon-57x57.png"><link rel="apple-touch-icon" sizes="60x60" href="/assets/img/favicons/apple-icon-60x60.png"><link rel="apple-touch-icon" sizes="72x72" href="/assets/img/favicons/apple-icon-72x72.png"><link rel="apple-touch-icon" sizes="76x76" href="/assets/img/favicons/apple-icon-76x76.png"><link rel="apple-touch-icon" sizes="114x114" href="/assets/img/favicons/apple-icon-114x114.png"><link rel="apple-touch-icon" sizes="120x120" href="/assets/img/favicons/apple-icon-120x120.png"><link rel="apple-touch-icon" sizes="144x144" href="/assets/img/favicons/apple-icon-144x144.png"><link rel="apple-touch-icon" sizes="152x152" href="/assets/img/favicons/apple-icon-152x152.png"><link rel="apple-touch-icon" sizes="180x180" href="/assets/img/favicons/apple-icon-180x180.png"><link rel="icon" type="image/png" sizes="192x192" href="/assets/img/favicons/android-icon-192x192.png"><link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicons/favicon-32x32.png"><link rel="icon" type="image/png" sizes="96x96" href="/assets/img/favicons/favicon-96x96.png"><link rel="icon" type="image/png" sizes="16x16" href="/assets/img/favicons/favicon-16x16.png"><link rel="manifest" href="/assets/img/favicons/manifest.json"><meta name='msapplication-config' content='/assets/img/favicons/browserconfig.xml'><meta name="msapplication-TileColor" content="#ffffff"><meta name="msapplication-TileImage" content="/assets/img/favicons/ms-icon-144x144.png"><meta name="theme-color" content="#ffffff"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"><link rel="dns-prefetch" href="https://fonts.gstatic.com"><link rel="preconnect" href="https://www.google-analytics.com" crossorigin="use-credentials"><link rel="dns-prefetch" href="https://www.google-analytics.com"><link rel="preconnect" href="https://www.googletagmanager.com" crossorigin="anonymous"><link rel="dns-prefetch" href="https://www.googletagmanager.com"><link rel="preconnect" href="cdn.jsdelivr.net"><link rel="dns-prefetch" href="cdn.jsdelivr.net"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/css/bootstrap.min.css" integrity="sha256-LA89z+k9fjgMKQ/kq4OO2Mrf8VltYml/VES+Rg0fh20=" crossorigin="anonymous"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.11.2/css/all.min.css" integrity="sha256-+N4/V/SbAFiW1MPBCXnfnP9QSN3+Keu+NlB+0ev/YKQ=" crossorigin="anonymous"><link rel="preload" href="/assets/css/post.css" as="style"><link rel="stylesheet" href="/assets/css/post.css"><link rel="preload" as="style" href="/assets/css/lib/bootstrap-toc.min.css"><link rel="stylesheet" href="/assets/css/lib/bootstrap-toc.min.css" /> <script src="https://cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js"></script> <script defer src="https://cdn.jsdelivr.net/combine/npm/popper.js@1.15.0,npm/bootstrap@4/dist/js/bootstrap.min.js"></script> <script async src="/assets/js/post.min.js"></script> <script defer src="/app.js"></script> <script defer src="https://www.googletagmanager.com/gtag/js?id=G-JVHJ82NYZT"></script> <script> document.addEventListener("DOMContentLoaded", function(event) { window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', 'G-JVHJ82NYZT'); }); </script><body data-spy="scroll" data-target="#toc"><div id="sidebar" class="d-flex flex-column align-items-end"><div class="profile-wrapper text-center"><div id="avatar"> <a href="/" alt="avatar" class="mx-auto"> <img src="https://narule.github.io/avatar.png" alt="avatar" onerror="this.style.display='none'"> </a></div><div class="site-title mt-3"> <a href="/">Narule</a></div><div class="site-subtitle font-italic">A Blog for Article; Chinese Blog is www.cnblogs.com/narule</div></div><ul class="w-100"><li class="nav-item"> <a href="/" class="nav-link"> <i class="fa-fw fas fa-home ml-xl-3 mr-xl-3 unloaded"></i> <span>HOME</span> </a><li class="nav-item"> <a href="/tabs/categories/" class="nav-link"> <i class="fa-fw fas fa-stream ml-xl-3 mr-xl-3 unloaded"></i> <span>CATEGORIES</span> </a><li class="nav-item"> <a href="/tabs/tags/" class="nav-link"> <i class="fa-fw fas fa-tags ml-xl-3 mr-xl-3 unloaded"></i> <span>TAGS</span> </a><li class="nav-item"> <a href="/tabs/archives/" class="nav-link"> <i class="fa-fw fas fa-archive ml-xl-3 mr-xl-3 unloaded"></i> <span>ARCHIVES</span> </a><li class="nav-item"> <a href="/tabs/about/" class="nav-link"> <i class="fa-fw fas fa-info ml-xl-3 mr-xl-3 unloaded"></i> <span>ABOUT</span> </a></ul><div class="sidebar-bottom mt-auto d-flex flex-wrap justify-content-center"> <a href="https://github.com/narule" aria-label="github" class="order-3" target="_blank" rel="noopener"> <i class="fab fa-github-alt"></i> </a> <a href="https://twitter.com/no_twitter" aria-label="twitter" class="order-4" target="_blank" rel="noopener"> <i class="fab fa-twitter"></i> </a> <a href=" javascript:location.href = 'mailto:' + ['narule','163.com'].join('@')" aria-label="email" class="order-5" > <i class="fas fa-envelope"></i> </a> <a href="/feed.xml" aria-label="rss" class="order-6" > <i class="fas fa-rss"></i> </a> <span class="icon-border order-2"></span> <span id="mode-toggle-wrapper" class="order-1"> <i class="mode-toggle fas fa-adjust"></i> <script type="text/javascript"> class ModeToggle { static get MODE_KEY() { return "mode"; } static get DARK_MODE() { return "dark"; } static get LIGHT_MODE() { return "light"; } constructor() { if (this.hasMode) { if (this.isDarkMode) { if (!this.isSysDarkPrefer) { this.setDark(); } } else { if (this.isSysDarkPrefer) { this.setLight(); } } } var self = this; /* always follow the system prefers */ this.sysDarkPrefers.addListener(function() { if (self.hasMode) { if (self.isDarkMode) { if (!self.isSysDarkPrefer) { self.setDark(); } } else { if (self.isSysDarkPrefer) { self.setLight(); } } self.clearMode(); } self.updateMermaid(); }); } /* constructor() */ setDark() { $('html').attr(ModeToggle.MODE_KEY, ModeToggle.DARK_MODE); sessionStorage.setItem(ModeToggle.MODE_KEY, ModeToggle.DARK_MODE); } setLight() { $('html').attr(ModeToggle.MODE_KEY, ModeToggle.LIGHT_MODE); sessionStorage.setItem(ModeToggle.MODE_KEY, ModeToggle.LIGHT_MODE); } clearMode() { $('html').removeAttr(ModeToggle.MODE_KEY); sessionStorage.removeItem(ModeToggle.MODE_KEY); } get sysDarkPrefers() { return window.matchMedia("(prefers-color-scheme: dark)"); } get isSysDarkPrefer() { return this.sysDarkPrefers.matches; } get isDarkMode() { return this.mode == ModeToggle.DARK_MODE; } get isLightMode() { return this.mode == ModeToggle.LIGHT_MODE; } get hasMode() { return this.mode != null; } get mode() { return sessionStorage.getItem(ModeToggle.MODE_KEY); } /* get the current mode on screen */ get modeStatus() { if (this.isDarkMode || (!this.hasMode && this.isSysDarkPrefer) ) { return ModeToggle.DARK_MODE; } else { return ModeToggle.LIGHT_MODE; } } updateMermaid() { if (typeof mermaid !== "undefined") { let expectedTheme = (this.modeStatus === ModeToggle.DARK_MODE? "dark" : "default"); let config = { theme: expectedTheme }; /* re-render the SVG › <https://github.com/mermaid-js/mermaid/issues/311#issuecomment-332557344> */ $(".mermaid").each(function() { let svgCode = $(this).prev().children().html(); $(this).removeAttr("data-processed"); $(this).html(svgCode); }); mermaid.initialize(config); mermaid.init(undefined, ".mermaid"); } } flipMode() { if (this.hasMode) { if (this.isSysDarkPrefer) { if (this.isLightMode) { this.clearMode(); } else { this.setLight(); } } else { if (this.isDarkMode) { this.clearMode(); } else { this.setDark(); } } } else { if (this.isSysDarkPrefer) { this.setLight(); } else { this.setDark(); } } this.updateMermaid(); } /* flipMode() */ } /* ModeToggle */ let toggle = new ModeToggle(); $(".mode-toggle").click(function() { toggle.flipMode(); }); </script> </span></div></div><div id="topbar-wrapper" class="row justify-content-center topbar-down"><div id="topbar" class="col-11 d-flex h-100 align-items-center justify-content-between"> <span id="breadcrumb"> <span> <a href="/"> Posts </a> </span> <span>SpringCloud-常用组件介绍</span> </span> <i id="sidebar-trigger" class="fas fa-bars fa-fw"></i><div id="topbar-title"> Post</div><i id="search-trigger" class="fas fa-search fa-fw"></i> <span id="search-wrapper" class="align-items-center"> <i class="fas fa-search fa-fw"></i> <input class="form-control" id="search-input" type="search" aria-label="search" placeholder="Search..."> <i class="fa fa-times-circle fa-fw" id="search-cleaner"></i> </span> <span id="search-cancel" >Cancel</span></div></div><div id="main-wrapper"><div id="main"><div class="row"><div id="post-wrapper" class="col-12 col-lg-11 col-xl-8"><div class="post pl-1 pr-1 pl-sm-2 pr-sm-2 pl-md-4 pr-md-4"><h1 data-toc-skip>SpringCloud-常用组件介绍</h1><div class="post-meta text-muted d-flex flex-column"><div> <span class="timeago " data-toggle="tooltip" data-placement="bottom" title="Sun, Jan 31, 2021, 10:12 PM +0800" > Jan 31, 2021 <i class="unloaded">2021-01-31T22:12:00+08:00</i> </span> by <span class="author"> Narule </span></div><div> <span> Updated <span class="timeago lastmod" data-toggle="tooltip" data-placement="bottom" title="Mon, Feb 1, 2021, 3:34 PM +0800" > Feb 1, 2021 <i class="unloaded">2021-02-01T15:34:53+08:00</i> </span> </span> <span class="readtime" data-toggle="tooltip" data-placement="bottom" title="2871 words">15 min</span></div></div><div class="post-content"><p>分布式系统开发用于分布式环境（多个服务器不在同一个机房，同一个业务服务在多台服务器运行）</p><p>Spring Cloud 是基于Springboot的分布式云服务架构，SpringCloud的设计就是为了分布式的云环境设计</p><p>下面说一些SpringCloud项目在开发中常用的几个组件</p><p>说组件之前，将一些分布式相关的概念</p><blockquote><p>CAP定理 指分区容错性 服务可用性 数据一致性，分布式环境：</p><p>​ 容错性，允许部分机器故障，但是系统人仍能正常运作</p><p>​ 服务可用性 任何时候调用服务有响应</p><p>​ 数据一致性 任何时候获取数据都一样(访问不同机器节点相同的业务数据)</p></blockquote><p>CAP定理因为分布式而存在，离开具体业务相对来说有些抽象，CAP只是说设计系统时的参考思想；但很明显的意思就是为了提高系统稳定性，让原来的一台服务器变成多台，提供相同服务，部分服务器坏了没关系，其他正常服务器能提供服务，从而让使用系统的一方不受影响，觉得这个系统是稳定的，但随之而来的是不同服务器之间数据如何同步，协作，就成了分布式系统要面对的问题。</p><p>简单的商城分布式系统，一个服务会运行在多台机器上，买商品下单这一个件事，需要多台服务器中的一个去完成，如果有两台服务器宕机，就去访问没有宕机的服务器（容错性）。下单是调用服务，调用服务这个过程是需要畅通的，不能等很久，下单服务在最多1秒左右就完成。（服务可用性）。下完单，被调用的服务器需要修改商品库存数据，将库存减一(x-1)。在这之后其他服务器访问显示商品库存也是x-1，而不是x（数据一致性）。</p><h2 id="springcloud-常用组件">SpringCloud-常用组件</h2><p>SpringCloud分布式组件提高了系统的开发效率，稳定性，可维护性</p><p>SpringCloud-Config 服务配置，提供统一配置功能。多个服务，或者服务器启动后，配置文件都在Config中，方便管理（分布式统一配置相关）</p><p>SpringCloud-Eureka 服务注册，提供注册服务。服务启动后，可以提供自己的服务地址注册到Eureka，暴露出来提供给其他人调用（服务可用性相关）</p><p>SpringCloud-OpenFeign 服务代理，提供代理调用服务。A服务要调用B服务，可以通过feign，feign使服务调用更方便（远程服务调用相关，有断路器，防止服务雪崩）</p><p>SpringCloud-Gateway 网关路由服务，提供代理访问转发。 访问narule.net/api 实际访问narule.github.io/api 可以通过Gateway来实现。（访问安全相关）</p><p>还有很多其他组件，比如redis相关组件用于数据一致性访问，kafka用于高吞吐消息队列等，本文主要讲上面提到的四个，通过代码简单说明如何使用。</p><h3 id="参考代码">参考代码</h3><p><strong>example 代码地址：</strong><a href="https://github.com/narule/springcloud-example">springcloud-example</a></p><p>完整代码请参考<a href="https://github.com/narule/springcloud-example">springcloud-example</a>，以及maven的完整依赖；如果要启动里面的服务，请务必先启动config-server，因为里面的项目都是通过config统一配置，包括服务用哪个端口访问等参数，；</p><h2 id="config">Config</h2><p>Config作为配置中心，能够很方便配置每个分布式系统参数，配置文件可以通过git等仓库专门管理</p><p>参考代码：<a href="https://github.com/narule/springcloud-example/tree/main/springcloud-config">config</a></p><p>测试访问：http://localhost:8888/eureka-server.yml http://localhost:8888/eureka-client.yml</p><h3 id="example">example</h3><p>关键配置是application.yml中配置文件的位置，一般由url指定</p><h4 id="dependencies-依赖">dependencies 依赖</h4><p>serverConfig-pom.xml</p><div class="language-xml highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+</pre><td class="rouge-code"><pre><span class="nt">&lt;dependencies&gt;</span>
+		<span class="nt">&lt;dependency&gt;</span>
+			<span class="nt">&lt;groupId&gt;</span>org.springframework.cloud<span class="nt">&lt;/groupId&gt;</span>
+			<span class="nt">&lt;artifactId&gt;</span>spring-cloud-config-server<span class="nt">&lt;/artifactId&gt;</span>
+		<span class="nt">&lt;/dependency&gt;</span>
+<span class="nt">&lt;/dependencies&gt;</span>
+</pre></table></code></div></div><h4 id="applicationyml">application.yml</h4><div class="language-yml highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+</pre><td class="rouge-code"><pre><span class="na">server</span><span class="pi">:</span>
+  <span class="na">port</span><span class="pi">:</span> <span class="m">8888</span> <span class="c1">#服务端口</span>
+<span class="na">spring</span><span class="pi">:</span>
+  <span class="na">application</span><span class="pi">:</span>
+    <span class="na">name</span><span class="pi">:</span> <span class="s">server-config</span>  <span class="c1">#服务名</span>
+  <span class="na">cloud</span><span class="pi">:</span>
+    <span class="na">config</span><span class="pi">:</span>
+      <span class="na">server</span><span class="pi">:</span>
+        <span class="na">git</span><span class="pi">:</span>
+          <span class="na">uri</span><span class="pi">:</span> <span class="s">https://github.com/narule/spring-cloud-config</span>   <span class="c1">#配置文件地址</span>
+          <span class="c1">#username: narule   </span>
+          <span class="c1">#password: password</span>
+    <span class="na">refresh</span><span class="pi">:</span>
+      <span class="na">enabled</span><span class="pi">:</span> <span class="no">true</span>
+</pre></table></code></div></div><h4 id="serverconfigapplication">ServerConfigApplication</h4><p>启动程序，除了SpringBootApplication，还需要EnableConfigServer注解:</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+</pre><td class="rouge-code"><pre><span class="kn">package</span> <span class="nn">net.narule.spring.cloud.config.server</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">org.springframework.boot.SpringApplication</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.boot.autoconfigure.SpringBootApplication</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.cloud.config.server.EnableConfigServer</span><span class="o">;</span>
+
+<span class="nd">@SpringBootApplication</span>
+<span class="nd">@EnableConfigServer</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">ConfigServerApplication</span> <span class="o">{</span>
+
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">main</span><span class="o">(</span><span class="nc">String</span><span class="o">[]</span> <span class="n">args</span><span class="o">)</span> <span class="o">{</span>
+		<span class="nc">SpringApplication</span><span class="o">.</span><span class="na">run</span><span class="o">(</span><span class="nc">ConfigServerApplication</span><span class="o">.</span><span class="na">class</span><span class="o">,</span> <span class="n">args</span><span class="o">);</span>
+	<span class="o">}</span>
+
+<span class="o">}</span>
+</pre></table></code></div></div><h3 id="配置读取规则">配置读取规则</h3><p>下文中所有应用程序的配置（包括端口）都是读取的 https://github.com/narule/spring-cloud-config</p><p>如果启动程序 spring.application.name=server1-client，并且配置了远程配置，此程序会尝试从远程读取server1-client.yml 文件的配置参数，这是springcloud-config配置规则</p><p>客户端应用读取配置只需要依赖<code class="language-plaintext highlighter-rouge">spring-cloud-starter-config</code> ，不需要在启动类中写什么注解</p><h4 id="client-dependencies">client-dependencies</h4><div class="language-xml highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+</pre><td class="rouge-code"><pre><span class="nt">&lt;dependency&gt;</span>
+    <span class="nt">&lt;groupId&gt;</span>org.springframework.cloud<span class="nt">&lt;/groupId&gt;</span>
+    <span class="nt">&lt;artifactId&gt;</span>spring-cloud-starter-config<span class="nt">&lt;/artifactId&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+</pre></table></code></div></div><h4 id="client-applicationyml">client-application.yml</h4><p>spring-cloud-starter-config 3.0 有新增配置</p><div class="language-yml highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+</pre><td class="rouge-code"><pre><span class="c1"># client一般指定配置路径</span>
+<span class="na">spring</span><span class="pi">:</span>
+  <span class="na">application</span><span class="pi">:</span>
+    <span class="na">name</span><span class="pi">:</span> <span class="s">config-client-one</span> <span class="c1">#一定要在本地指定 spring.application.name 才能读取远程配置</span>
+
+  <span class="na">cloud</span><span class="pi">:</span>
+    <span class="na">refresh</span><span class="pi">:</span>
+      <span class="na">enabled</span><span class="pi">:</span> <span class="no">true</span>
+    <span class="na">config</span><span class="pi">:</span>
+      <span class="na">uri</span><span class="pi">:</span>
+      <span class="pi">-</span> <span class="s">http://localhost:8888</span> <span class="c1"># config-server的访问地址</span>
+
+
+<span class="c1"># 3.0之后新的方式 指定url</span>
+<span class="na">spring</span><span class="pi">:</span>
+  <span class="na">application</span><span class="pi">:</span>
+    <span class="na">name</span><span class="pi">:</span> <span class="s">config-client-one</span>
+  <span class="na">config</span><span class="pi">:</span>
+    <span class="na">import</span><span class="pi">:</span>
+     <span class="pi">-</span> <span class="s">optional:configserver:http://narule.net:8888</span> <span class="c1">#config-server的访问地址</span>
+</pre></table></code></div></div><h4 id="configclientoneapplication">ConfigClientOneApplication</h4><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+</pre><td class="rouge-code"><pre><span class="kn">package</span> <span class="nn">net.narule.spring.cloud.config.client</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">org.springframework.boot.SpringApplication</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.boot.autoconfigure.SpringBootApplication</span><span class="o">;</span>
+
+<span class="nd">@SpringBootApplication</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">ConfigClientOneApplication</span> <span class="o">{</span>
+
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">main</span><span class="o">(</span><span class="nc">String</span><span class="o">[]</span> <span class="n">args</span><span class="o">)</span> <span class="o">{</span>
+		<span class="nc">SpringApplication</span><span class="o">.</span><span class="na">run</span><span class="o">(</span><span class="nc">ConfigClientOneApplication</span><span class="o">.</span><span class="na">class</span><span class="o">,</span> <span class="n">args</span><span class="o">);</span>
+	<span class="o">}</span>
+
+<span class="o">}</span>
+</pre></table></code></div></div><h2 id="eureka">Eureka</h2><p>Eureka提供服务注册，分为注册中心和客户端，注册中心使用@EnableEurekaServer</p><p>客户端有producer服务提供者，consumer 服务消费者，在使用时，都使用@EnableEurekaCilent注解，启动服务的时候，将自己的服务信息，ip和端口号等，注册到Eureka服务中心，让其他eurekaclient能通过Eureka服务注册中心获取服务的ip和端口号。</p><p>参考代码：<a href="https://github.com/narule/springcloud-example/tree/main/springcloud-eureka">eureka</a></p><p>测试访问：https://localhost:1999/eureka-server</p><h3 id="example-1">example</h3><p>​ 服务端，主要参数是服务的节点，注册节点地址，注册帐号密码（可选）</p><h4 id="server-dependencies-依赖">server-dependencies 依赖</h4><div class="language-xml highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+</pre><td class="rouge-code"><pre><span class="nt">&lt;dependency&gt;</span>
+    <span class="nt">&lt;groupId&gt;</span>org.springframework.cloud<span class="nt">&lt;/groupId&gt;</span>
+    <span class="nt">&lt;artifactId&gt;</span>spring-cloud-starter-netflix-eureka-server<span class="nt">&lt;/artifactId&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+<span class="c">&lt;!--Spring Boot Actuator，感应服务端变化--&gt;</span>
+<span class="nt">&lt;dependency&gt;</span>
+    <span class="nt">&lt;groupId&gt;</span>org.springframework.boot<span class="nt">&lt;/groupId&gt;</span>
+    <span class="nt">&lt;artifactId&gt;</span>spring-boot-starter-actuator<span class="nt">&lt;/artifactId&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+<span class="c">&lt;!-- security 此模块权限校验 --&gt;</span>
+<span class="nt">&lt;dependency&gt;</span>
+    <span class="nt">&lt;groupId&gt;</span>org.springframework.cloud<span class="nt">&lt;/groupId&gt;</span>
+    <span class="nt">&lt;artifactId&gt;</span>spring-cloud-starter-security<span class="nt">&lt;/artifactId&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+</pre></table></code></div></div><h4 id="server-applicationyml">server-application.yml</h4><div class="language-yml highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+</pre><td class="rouge-code"><pre><span class="na">server</span><span class="pi">:</span>
+  <span class="na">port</span><span class="pi">:</span> <span class="m">1999</span>
+<span class="na">spring</span><span class="pi">:</span>
+  <span class="na">application</span><span class="pi">:</span>
+    <span class="na">name</span><span class="pi">:</span> <span class="s">eureka-server</span> <span class="c1">#注册中心访问path</span>
+<span class="na">eureka</span><span class="pi">:</span>
+  <span class="na">dashboard</span><span class="pi">:</span>
+    <span class="na">path</span><span class="pi">:</span> <span class="s">eureka-server</span>
+  <span class="na">instance</span><span class="pi">:</span>
+    <span class="na">hostname</span><span class="pi">:</span> <span class="s">localhost</span>
+  <span class="na">client</span><span class="pi">:</span>
+    <span class="na">registerWithEureka</span><span class="pi">:</span> <span class="no">false</span> <span class="c1">#将自己注册微eurekaclient false</span>
+    <span class="na">fetchRegistry</span><span class="pi">:</span> <span class="no">false</span>
+    <span class="na">serviceUrl</span><span class="pi">:</span>
+      <span class="na">defaultZone</span><span class="pi">:</span> <span class="s">http://${eureka.instance.hostname}:${server.port}/eureka/</span> <span class="c1">#注册节点地址</span>
+  <span class="na">server</span><span class="pi">:</span>
+    <span class="na">enable-self-preservation</span><span class="pi">:</span> <span class="no">false</span>
+    <span class="na">eviction-interval-timer-in-ms</span><span class="pi">:</span> <span class="m">10000</span> <span class="c1">#服务刷新时间</span>
+</pre></table></code></div></div><h4 id="eurekaserverapplication">EurekaServerApplication</h4><p>配置文件配置好后，使用@EnableEurekaServer注解即可</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+</pre><td class="rouge-code"><pre><span class="kn">package</span> <span class="nn">com.wunanyu.cloud.eureka</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.boot.SpringApplication</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.boot.WebApplicationType</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.boot.autoconfigure.SpringBootApplication</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.boot.builder.SpringApplicationBuilder</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.cloud.netflix.eureka.server.EnableEurekaServer</span><span class="o">;</span>
+
+<span class="nd">@SpringBootApplication</span>
+<span class="nd">@EnableEurekaServer</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">EurekaServerApplication</span> <span class="o">{</span>
+
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">main</span><span class="o">(</span><span class="nc">String</span><span class="o">[]</span> <span class="n">args</span><span class="o">)</span> <span class="o">{</span>
+		<span class="nc">SpringApplication</span><span class="o">.</span><span class="na">run</span><span class="o">(</span><span class="nc">EurekaServerApplication</span><span class="o">.</span><span class="na">class</span><span class="o">,</span> <span class="n">args</span><span class="o">);</span>
+	<span class="o">}</span>
+<span class="o">}</span>
+</pre></table></code></div></div><h4 id="客户端">客户端</h4><h4 id="client-dependencies-1">client-dependencies</h4><p>客户端依赖</p><div class="language-xml highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+</pre><td class="rouge-code"><pre><span class="nt">&lt;dependency&gt;</span>
+    <span class="nt">&lt;groupId&gt;</span>org.springframework.cloud<span class="nt">&lt;/groupId&gt;</span>
+    <span class="nt">&lt;artifactId&gt;</span>spring-cloud-starter-netflix-eureka-client<span class="nt">&lt;/artifactId&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+</pre></table></code></div></div><h4 id="client-applicationyml-1">client-application.yml</h4><p>配置文件主要是指定注册中心地址，通过这个配置客户端可以把自己的服务注册到注册中心，或者从注册中心获取其他服务的信息，</p><div class="language-yml highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+</pre><td class="rouge-code"><pre><span class="na">spring</span><span class="pi">:</span>
+  <span class="na">application</span><span class="pi">:</span>
+    <span class="na">name</span><span class="pi">:</span> <span class="s">eureka-client</span>
+<span class="c1">## 下面的配置是通过config-server读取，如果没有配置中心，则需要在本地配置文件中写好    </span>
+<span class="na">server</span><span class="pi">:</span>
+  <span class="na">port</span><span class="pi">:</span> <span class="m">18080</span>
+<span class="na">eureka</span><span class="pi">:</span>
+<span class="c1">#客户端</span>
+  <span class="na">client</span><span class="pi">:</span>
+<span class="c1">#注册中心地址</span>
+    <span class="na">service-url</span><span class="pi">:</span>
+      <span class="na">defaultZone</span><span class="pi">:</span> <span class="s">http://localhost:1999/eureka/</span>  <span class="c1">#这里是</span>
+      
+  <span class="na">instance</span><span class="pi">:</span>
+    <span class="na">instanceId</span><span class="pi">:</span> <span class="s">${spring.application.name}:${vcap.application.instance_id:${spring.application.instance_id:${random.value}}}# 实例id命名规则，这个用于区分同一服务在不同的机器，可应用于分布式锁</span>
+    <span class="na">prefer-ip-address</span><span class="pi">:</span> <span class="no">true</span> <span class="c1">#以IP地址注册到服务中心，相互注册使用IP地址</span>
+    <span class="na">hostname</span><span class="pi">:</span> <span class="s">localhost</span>
+</pre></table></code></div></div><h4 id="eurekaclientapplication">EurekaClientApplication</h4><p>客户端的使用是注解@EnableEurekaClient，有这个注解，启动时会把自己的信息注册到服务中心，当然要配置注册中心节点信息，让客户端知道注册地址在哪。</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+</pre><td class="rouge-code"><pre><span class="kn">package</span> <span class="nn">net.narule.spring.cloud.eureka.client</span><span class="o">;</span>
+
+
+<span class="kn">import</span> <span class="nn">org.springframework.boot.SpringApplication</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.boot.autoconfigure.SpringBootApplication</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.cloud.netflix.eureka.EnableEurekaClient</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.PathVariable</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RequestMapping</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RestController</span><span class="o">;</span>
+
+<span class="nd">@SpringBootApplication</span>
+<span class="nd">@EnableEurekaClient</span>
+<span class="nd">@RestController</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">EurekaClientApplication</span> <span class="o">{</span>
+
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">main</span><span class="o">(</span><span class="nc">String</span><span class="o">[]</span> <span class="n">args</span><span class="o">)</span> <span class="o">{</span>
+		<span class="nc">SpringApplication</span><span class="o">.</span><span class="na">run</span><span class="o">(</span><span class="nc">EurekaClientApplication</span><span class="o">.</span><span class="na">class</span><span class="o">,</span> <span class="n">args</span><span class="o">);</span>
+	<span class="o">}</span>
+
+	<span class="nd">@RequestMapping</span><span class="o">(</span><span class="s">"/request-eureka-client/{id}"</span><span class="o">)</span>
+	<span class="kd">public</span> <span class="nc">ResponseResult</span> <span class="nf">requestEurekaClient</span><span class="o">(</span><span class="nd">@PathVariable</span> <span class="nc">String</span> <span class="n">id</span><span class="o">)</span> <span class="o">{</span>
+		<span class="k">return</span> <span class="nc">ResponseResult</span><span class="o">.</span><span class="na">ok</span><span class="o">(</span><span class="n">id</span> <span class="o">+</span> <span class="s">"from-eureka-client"</span><span class="o">);</span>
+	<span class="o">}</span>
+<span class="o">}</span>
+
+</pre></table></code></div></div><h2 id="openfeign">OpenFeign</h2><p>Feign和eureka一样是Nexflix的组件，可以用作接口调用Eureka服务，完成服务于服务之间的调用</p><p>参考代码：<a href="https://github.com/narule/springcloud-example/tree/main/springcloud-openfeign">openfeign</a></p><p>测试访问：http://localhost:1666/request-feign-client</p><h3 id="example-2">example</h3><h4 id="dependencies-依赖-1">dependencies 依赖</h4><p>因为feign通过eureka调用服务，并且在分布式环境考虑到负载均衡，所以依赖除了feign，还有ribbon和eureka</p><div class="language-xml highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+</pre><td class="rouge-code"><pre><span class="nt">&lt;dependency&gt;</span>
+    <span class="nt">&lt;groupId&gt;</span>org.springframework.cloud<span class="nt">&lt;/groupId&gt;</span>
+    <span class="nt">&lt;artifactId&gt;</span>spring-cloud-starter-openfeign<span class="nt">&lt;/artifactId&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+<span class="nt">&lt;dependency&gt;</span>
+    <span class="nt">&lt;groupId&gt;</span>org.springframework.cloud<span class="nt">&lt;/groupId&gt;</span>
+    <span class="nt">&lt;artifactId&gt;</span>spring-cloud-starter-netflix-ribbon<span class="nt">&lt;/artifactId&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+<span class="nt">&lt;dependency&gt;</span>
+    <span class="nt">&lt;groupId&gt;</span>org.springframework.cloud<span class="nt">&lt;/groupId&gt;</span>
+    <span class="nt">&lt;artifactId&gt;</span>
+        spring-cloud-starter-netflix-eureka-client
+    <span class="nt">&lt;/artifactId&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+</pre></table></code></div></div><h4 id="feignclientapplication">FeignClientApplication</h4><p>要使用feign功能，启动类需要使用注解@EnableFeignClients</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+</pre><td class="rouge-code"><pre><span class="kn">package</span> <span class="nn">net.narule.spring.cloud.feign.client</span><span class="o">;</span>
+
+
+<span class="kn">import</span> <span class="nn">org.springframework.beans.factory.annotation.Autowired</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.boot.SpringApplication</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.boot.autoconfigure.SpringBootApplication</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.cloud.openfeign.EnableFeignClients</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.cloud.openfeign.FeignClient</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.PathVariable</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.PostMapping</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RequestMapping</span><span class="o">;</span>
+<span class="kn">import</span> <span class="nn">org.springframework.web.bind.annotation.RestController</span><span class="o">;</span>
+
+<span class="nd">@SpringBootApplication</span>
+<span class="nd">@EnableFeignClients</span>
+<span class="nd">@RestController</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">FeignClientApplication</span> <span class="o">{</span>
+
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">main</span><span class="o">(</span><span class="nc">String</span><span class="o">[]</span> <span class="n">args</span><span class="o">)</span> <span class="o">{</span>
+		<span class="nc">SpringApplication</span><span class="o">.</span><span class="na">run</span><span class="o">(</span><span class="nc">FeignClientApplication</span><span class="o">.</span><span class="na">class</span><span class="o">,</span> <span class="n">args</span><span class="o">);</span>
+	<span class="o">}</span>
+	<span class="nd">@Autowired</span>
+	<span class="kd">private</span> <span class="nc">FeignInterFace</span> <span class="n">feignInterFace</span><span class="o">;</span>
+	
+	<span class="nd">@RequestMapping</span><span class="o">(</span><span class="s">"/request-feign-client"</span><span class="o">)</span>
+	<span class="kd">public</span> <span class="nc">ResponseResult</span> <span class="nf">requestFeignClient</span><span class="o">()</span> <span class="o">{</span>
+		<span class="nc">String</span> <span class="n">id</span> <span class="o">=</span> <span class="nc">String</span><span class="o">.</span><span class="na">valueOf</span><span class="o">(</span><span class="nc">System</span><span class="o">.</span><span class="na">currentTimeMillis</span><span class="o">());</span>
+		<span class="nc">ResponseResult</span> <span class="n">reuqestEurekaClient</span> <span class="o">=</span> <span class="n">feignInterFace</span><span class="o">.</span><span class="na">reuqestEurekaClient</span><span class="o">(</span><span class="n">id</span><span class="o">);</span>
+		<span class="k">return</span> <span class="nc">ResponseResult</span><span class="o">.</span><span class="na">ok</span><span class="o">(</span><span class="n">reuqestEurekaClient</span><span class="o">);</span>
+	<span class="o">}</span>
+	
+	
+	<span class="nd">@FeignClient</span><span class="o">(</span><span class="s">"eureka-client"</span><span class="o">)</span>
+	<span class="kd">interface</span> <span class="nc">FeignInterFace</span> <span class="o">{</span>
+		
+		<span class="nd">@RequestMapping</span><span class="o">(</span><span class="n">value</span> <span class="o">=</span> <span class="s">"/request-eureka-client/{id}"</span><span class="o">)</span>
+		<span class="kd">public</span> <span class="nc">ResponseResult</span> <span class="nf">reuqestEurekaClient</span><span class="o">(</span><span class="nd">@PathVariable</span><span class="o">(</span><span class="s">"id"</span><span class="o">)</span> <span class="nc">String</span> <span class="n">id</span><span class="o">);</span>
+		
+	<span class="o">}</span>
+
+<span class="o">}</span>
+</pre></table></code></div></div><h4 id="feigninterface">FeignInterface</h4><p>Feign使用时，只需要写接口，并在注解上配好url即可，不需要写代码实现方法，</p><p>@FeignClient(“eureka-client”)表示有服务名叫eureka-client，方法上的value = “/request-eureka-client/{id}” 说明eureka-client服务有/request-eureka-client/{id}的请求路径，这是要对应的，并且eureka-client服务注册到eureka注册中心，不然服务调用失败。</p><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+</pre><td class="rouge-code"><pre><span class="nd">@FeignClient</span><span class="o">(</span><span class="s">"eureka-client"</span><span class="o">)</span>
+<span class="kd">interface</span> <span class="nc">FeignInterFace</span> <span class="o">{</span>
+
+    <span class="nd">@RequestMapping</span><span class="o">(</span><span class="n">value</span> <span class="o">=</span> <span class="s">"/request-eureka-client/{id}"</span><span class="o">)</span>
+    <span class="kd">public</span> <span class="nc">ResponseResult</span> <span class="nf">reuqestEurekaClient</span><span class="o">(</span><span class="nd">@PathVariable</span><span class="o">(</span><span class="s">"id"</span><span class="o">)</span> <span class="nc">String</span> <span class="n">id</span><span class="o">);</span>
+
+<span class="o">}</span>
+</pre></table></code></div></div><h4 id="feign-clientyml">feign-client.yml</h4><p>配置文件需要指定eureka的注册节点，因为feign最终通过eureka获取服务信息来完成接口访问</p><div class="language-yml highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+</pre><td class="rouge-code"><pre><span class="na">server</span><span class="pi">:</span>
+  <span class="na">port</span><span class="pi">:</span> <span class="m">1666</span>
+  
+<span class="na">eureka</span><span class="pi">:</span>
+<span class="c1">#客户端</span>
+  <span class="na">client</span><span class="pi">:</span>
+<span class="c1">#注册中心地址</span>
+    <span class="na">service-url</span><span class="pi">:</span>
+      <span class="na">defaultZone</span><span class="pi">:</span> <span class="s">http://localhost:1999/eureka/</span>
+</pre></table></code></div></div><h2 id="gateway">Gateway</h2><p>gateway是网关组件，此组件可以用来转发请求，设置路由，比较灵活。</p><p>如果有服务访问路径是http://localhost:1666/request-feign-client 我们可以因为一些个性化需求改变路由</p><p>通过gateway可以让访问http://localhost:12000/api/feign/request-feign-client 等同于上面的访问路径</p><p>参考代码：<a href="https://github.com/narule/springcloud-example/tree/main/springcloud-gateway">gateway</a></p><p>测试访问：http://localhost:12000/api/feign/request-feign-client</p><h3 id="example-3">example</h3><h4 id="gateway-dependencies">gateway-dependencies</h4><p>gateway作为网关服务，可以搭配eureka使用</p><div class="language-xml highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+</pre><td class="rouge-code"><pre><span class="nt">&lt;dependency&gt;</span>
+    <span class="nt">&lt;groupId&gt;</span>org.springframework.cloud<span class="nt">&lt;/groupId&gt;</span>
+    <span class="nt">&lt;artifactId&gt;</span>spring-cloud-starter-gateway<span class="nt">&lt;/artifactId&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+<span class="nt">&lt;dependency&gt;</span>
+    <span class="nt">&lt;groupId&gt;</span>org.springframework.cloud<span class="nt">&lt;/groupId&gt;</span>
+    <span class="nt">&lt;artifactId&gt;</span>
+        spring-cloud-starter-netflix-eureka-client
+    <span class="nt">&lt;/artifactId&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+</pre></table></code></div></div><h4 id="gatewayserverapplication">GatewayServerApplication</h4><div class="language-java highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+</pre><td class="rouge-code"><pre><span class="nd">@SpringBootApplication</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">GatewayServerApplication</span> <span class="o">{</span>
+
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">main</span><span class="o">(</span><span class="nc">String</span><span class="o">[]</span> <span class="n">args</span><span class="o">)</span> <span class="o">{</span>
+		<span class="nc">SpringApplication</span><span class="o">.</span><span class="na">run</span><span class="o">(</span><span class="nc">GatewayServerApplication</span><span class="o">.</span><span class="na">class</span><span class="o">,</span> <span class="n">args</span><span class="o">);</span>
+	<span class="o">}</span>
+<span class="o">}</span>
+</pre></table></code></div></div><h4 id="gateway-serveryml">gateway-server.yml</h4><div class="language-yml highlighter-rouge"><div class="highlight"><code><table class="rouge-table"><tbody><tr><td class="rouge-gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+</pre><td class="rouge-code"><pre><span class="na">server</span><span class="pi">:</span>
+  <span class="na">port</span><span class="pi">:</span> <span class="m">12000</span>
+
+<span class="na">spring</span><span class="pi">:</span>
+  <span class="na">cloud</span><span class="pi">:</span>
+    <span class="na">gateway</span><span class="pi">:</span>
+      <span class="na">routes</span><span class="pi">:</span>
+        <span class="c1"># 路由ID（一个路由配置一个ID）</span>
+        <span class="pi">-</span> <span class="na">id</span><span class="pi">:</span> <span class="s">eureka-c</span>
+ 
+          <span class="c1"># 通过注册中心来查找服务（lb代表从注册中心获取服务，并且负载均衡）</span>
+          <span class="na">uri</span><span class="pi">:</span> <span class="s">lb://eureka-client/</span>
+ 
+          <span class="c1"># 匹配到的以/api/eureka/ 通过eureka访问 eureka-client/**</span>
+          <span class="na">predicates</span><span class="pi">:</span>
+            <span class="pi">-</span> <span class="s">Path=/api/eureka/**</span>
+          <span class="c1"># 去掉匹配到的路径的前2级 这里也就是 /api/eureka</span>
+          <span class="na">filters</span><span class="pi">:</span>
+            <span class="pi">-</span> <span class="s">StripPrefix=2</span>
+            
+        <span class="pi">-</span> <span class="na">id</span><span class="pi">:</span> <span class="s">feign-c</span>
+          
+          <span class="na">uri</span><span class="pi">:</span> <span class="s">lb://feign-client/</span>
+ <span class="err">		</span>  <span class="c1"># 匹配到的以/api/feign/开头的路径都转发到feign-client的服务，相当于访问 lb://feign-client/**</span>
+          <span class="na">predicates</span><span class="pi">:</span>
+            <span class="pi">-</span> <span class="s">Path=/api/feign/**</span>
+          <span class="c1"># 去掉匹配到的路径的前2级 这里也就是 /api/feign</span>
+          <span class="na">filters</span><span class="pi">:</span>
+            <span class="pi">-</span> <span class="s">StripPrefix=2</span>
+      <span class="na">discovery</span><span class="pi">:</span>
+        <span class="na">locator</span><span class="pi">:</span>
+          <span class="na">enabled</span><span class="pi">:</span> <span class="no">true</span>
+          <span class="na">lowerCaseServiceId</span><span class="pi">:</span> <span class="no">true</span>
+  
+<span class="na">eureka</span><span class="pi">:</span>
+<span class="c1">#客户端</span>
+  <span class="na">client</span><span class="pi">:</span>
+<span class="c1">#注册中心地址</span>
+    <span class="na">service-url</span><span class="pi">:</span>
+      <span class="na">defaultZone</span><span class="pi">:</span> <span class="s">http://localhost:1999/eureka/</span>
+</pre></table></code></div></div></div><div class="post-tail-wrapper text-muted"><div class="post-meta mb-3"> <i class="far fa-folder-open fa-fw mr-1"></i> <a href='/categories/technology-%E6%8A%80%E6%9C%AF/'>Technology^技术</a>, <a href='/categories/java/'>Java</a>, <a href='/categories/spring/'>Spring</a></div><div class="post-tags"> <i class="fa fa-tags fa-fw mr-1"></i> <a href="/tags/writing/" class="post-tag no-text-decoration" >writing</a> <a href="/tags/java/" class="post-tag no-text-decoration" >Java</a> <a href="/tags/spring/" class="post-tag no-text-decoration" >Spring</a> <a href="/tags/springcloud/" class="post-tag no-text-decoration" >SpringCloud</a></div><div class="post-tail-bottom d-flex justify-content-between align-items-center mt-3 pt-5 pb-2"><div class="license-wrapper"> This post is licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a> by the author.</div><div class="share-wrapper"> <span class="share-label text-muted mr-1">Share</span> <span class="share-icons"> <a href="https://twitter.com/intent/tweet?text=SpringCloud-常用组件介绍 - Narule&url=https://narule.github.io/posts/SpringCloud-%E5%B8%B8%E7%94%A8%E7%BB%84%E4%BB%B6%E4%BB%8B%E7%BB%8D/" data-toggle="tooltip" data-placement="top" title="Twitter" target="_blank" rel="noopener" aria-label="Twitter"> <i class="fa-fw fab fa-twitter"></i> </a> <a href="https://www.facebook.com/sharer/sharer.php?title=SpringCloud-常用组件介绍 - Narule&u=https://narule.github.io/posts/SpringCloud-%E5%B8%B8%E7%94%A8%E7%BB%84%E4%BB%B6%E4%BB%8B%E7%BB%8D/" data-toggle="tooltip" data-placement="top" title="Facebook" target="_blank" rel="noopener" aria-label="Facebook"> <i class="fa-fw fab fa-facebook-square"></i> </a> <a href="https://telegram.me/share?text=SpringCloud-常用组件介绍 - Narule&url=https://narule.github.io/posts/SpringCloud-%E5%B8%B8%E7%94%A8%E7%BB%84%E4%BB%B6%E4%BB%8B%E7%BB%8D/" data-toggle="tooltip" data-placement="top" title="Telegram" target="_blank" rel="noopener" aria-label="Telegram"> <i class="fa-fw fab fa-telegram"></i> </a> <i class="fa-fw fas fa-link small" onclick="copyLink()" data-toggle="tooltip" data-placement="top" title="Copy link"></i> </span></div></div></div></div></div><div id="panel-wrapper" class="col-xl-3 pl-2 text-muted topbar-down"><div class="access"><div id="access-lastmod" class="post"> <span>Recent Update</span><ul class="post-content pl-0 pb-1 ml-1 mt-2"><li><a href="/posts/%E4%BA%92%E8%81%94%E7%BD%91%E5%A4%87%E5%BF%98%E5%BD%95/">互联网备忘录</a><li><a href="/posts/%E7%94%A8%E6%88%B7%E6%8C%87%E7%BA%B9/">用户指纹</a><li><a href="/posts/%E5%85%B3%E4%BA%8Enetty/">关于netty</a><li><a href="/posts/%E8%87%AA%E5%8A%A8%E6%9B%B4%E6%96%B0%E5%8D%9A%E5%AE%A2%E7%9A%84%E8%AE%BE%E8%AE%A1-The-design-of-an-automatically-updated-blog/">The design of an automatically updated blog | 自动更新博客的设计</a><li><a href="/posts/AbstractQueuedSynchronizer%E6%8A%BD%E8%B1%A1%E7%B1%BB-%E9%98%BB%E5%A1%9E%E9%94%81/">AbstractQueuedSynchronizer抽象类-阻塞锁</a></ul></div><div id="access-tags"> <span>Trending Tags</span><div class="d-flex flex-wrap mt-3 mb-1 mr-3"> <a class="post-tag" href="/tags/writing/">writing</a> <a class="post-tag" href="/tags/java/">Java</a> <a class="post-tag" href="/tags/think/">Think</a> <a class="post-tag" href="/tags/algorithm/">Algorithm</a> <a class="post-tag" href="/tags/docker/">docker</a> <a class="post-tag" href="/tags/spring/">Spring</a> <a class="post-tag" href="/tags/website/">website</a> <a class="post-tag" href="/tags/linux/">Linux</a> <a class="post-tag" href="/tags/map/">map</a> <a class="post-tag" href="/tags/nginx/">nginx</a></div></div></div><div id="toc-wrapper" class="pl-0 pr-4 mb-5"> <span class="pl-3 pt-2 mb-2">Contents</span><nav id="toc" data-toggle="toc"></nav></div></div></div><div class="row"><div class="col-12 col-lg-11 col-xl-8"><div id="post-extend-wrapper" class="pl-1 pr-1 pl-sm-2 pr-sm-2 pl-md-4 pr-md-4"><div id="related-posts" class="mt-5 mb-2 mb-sm-4"><h3 class="pt-2 mt-1 mb-4 ml-1" data-toc-skip>Further Reading</h3><div class="card-deck mb-4"><div class="card"> <a href="/posts/SpringCloud-ServerConfig/"><div class="card-body"> <span class="timeago small" > Apr 23, 2020 <i class="unloaded">2020-04-23T20:10:00+08:00</i> </span><h3 class="pt-0 mt-1 mb-3" data-toc-skip>SpringCloud-ServerConfig</h3><div class="text-muted small"><p> ServerConfig SpringCloud 组件，ServerConfig 是配置服务中心，组件，用于统一管理项目配置’’ 原理 读取配置文件内容到服务中心 通过启动一个springboot服务（server-config），配置好git仓库地址（也可以svn或者其他），通过配置好的文件地址，访问配置文件，将配置读取到服务中心，并且文件内容修改后，可以实时刷新。 客户端...</p></div></div></a></div><div class="card"> <a href="/posts/SpringBoot-%E5%90%AF%E5%8A%A8%E6%B5%81%E7%A8%8B/"><div class="card-body"> <span class="timeago small" > Jan 8, 2021 <i class="unloaded">2021-01-08T20:10:00+08:00</i> </span><h3 class="pt-0 mt-1 mb-3" data-toc-skip>SpringBoot-启动流程</h3><div class="text-muted small"><p> SpringBoot-启动流程 平时开发springboot项目的时候，一个SpringBootApplication注解加一个main方法就可以启动服务器运行起来（默认tomcat），看了下源码，这里讲下认为主要的流程 主要流程如下 0.启动main方法开始 1.初始化配置：通过类加载器，（loadFactories）读取classpath下所有的spring.factories配...</p></div></div></a></div><div class="card"> <a href="/posts/AbstractQueuedSynchronizer%E6%8A%BD%E8%B1%A1%E7%B1%BB-%E9%98%BB%E5%A1%9E%E9%94%81/"><div class="card-body"> <span class="timeago small" > Mar 20, 2021 <i class="unloaded">2021-03-20T00:10:00+08:00</i> </span><h3 class="pt-0 mt-1 mb-3" data-toc-skip>AbstractQueuedSynchronizer抽象类-阻塞锁</h3><div class="text-muted small"><p> AbstractQueuedSynchronizer抽象类-阻塞锁 AbstractQueuedSynchronizer是多线程情况下保证代码快有序运行的一种设计，对多线程获取锁进行了抽象， 设计中包括： 1.线程队列（阻塞的线程） 当很多线程竞争锁的时候，排队一个个获取锁，先进先出 2.线程获取锁，成功就执行后面的代码 3.线程释放锁，如果等待队列中有线程，唤醒队列中的线程 ...</p></div></div></a></div></div></div><div class="post-navigation d-flex justify-content-between"> <a href="/posts/%E4%BB%A3%E5%AD%95%E5%BC%95%E5%8F%91%E7%9A%84%E6%80%9D%E8%80%83/" class="btn btn-outline-primary"><p>代孕引发的关于人类未来生命的思考</p></a> <a href="/posts/%E5%AD%A6%E4%B9%A0%E4%BA%86%E8%A7%A3%E4%BD%BF%E7%94%A8docker/" class="btn btn-outline-primary"><p>了解学习使用docker</p></a></div><div id="disqus" class="pt-2 pb-2"><p class="font-italic text-center text-muted small"> Comments powered by <a href="https://disqus.com/">Disqus</a>.</p></div><script src="/assets/js/lib/jquery.disqusloader.min.js"></script> <script> var options = { scriptUrl: '//.disqus.com/embed.js', disqusConfig: function() { this.page.url = 'https://narule.github.io/posts/SpringCloud-%E5%B8%B8%E7%94%A8%E7%BB%84%E4%BB%B6%E4%BB%8B%E7%BB%8D/'; this.page.identifier = '/posts/SpringCloud-%E5%B8%B8%E7%94%A8%E7%BB%84%E4%BB%B6%E4%BB%8B%E7%BB%8D/'; } }; $.disqusLoader('#disqus', options); </script></div></div></div><footer class="d-flex w-100 justify-content-center"><div class="d-flex justify-content-between align-items-center"><div class="footer-left"><p class="mb-0"> © 2025 <a href="https://cnblogs.com/narule">narule</a>. <span data-toggle="tooltip" data-placement="top" title="Except where otherwise noted, the blog posts on this site are licensed under the Creative Commons Attribution 4.0 International (CC BY 4.0) License by the author.">Some rights reserved.</span></p></div><div class="footer-right"><p class="mb-0"> Powered by <a href="https://jekyllrb.com" target="_blank" rel="noopener">Jekyll</a> with <a href="https://github.com/cotes2020/jekyll-theme-chirpy/" target="_blank" rel="noopener">Chirpy</a> theme.</p></div></div></footer></div><div id="search-result-wrapper" class="d-flex justify-content-center unloaded"><div class="col-12 col-xl-11 post-content"><div id="search-hints"><h4 class="text-muted mb-4">Trending Tags</h4><a class="post-tag" href="/tags/writing/">writing</a> <a class="post-tag" href="/tags/java/">Java</a> <a class="post-tag" href="/tags/think/">Think</a> <a class="post-tag" href="/tags/algorithm/">Algorithm</a> <a class="post-tag" href="/tags/docker/">docker</a> <a class="post-tag" href="/tags/spring/">Spring</a> <a class="post-tag" href="/tags/website/">website</a> <a class="post-tag" href="/tags/linux/">Linux</a> <a class="post-tag" href="/tags/map/">map</a> <a class="post-tag" href="/tags/nginx/">nginx</a></div><div id="search-results" class="d-flex flex-wrap justify-content-center text-muted mt-3"></div></div></div></div><div id="mask"></div><a id="back-to-top" href="#" aria-label="back-to-top" class="btn btn-lg btn-box-shadow" role="button"> <i class="fas fa-angle-up"></i> </a> <script src="https://cdn.jsdelivr.net/npm/simple-jekyll-search@1.7.3/dest/simple-jekyll-search.min.js"></script> <script> SimpleJekyllSearch({ searchInput: document.getElementById('search-input'), resultsContainer: document.getElementById('search-results'), json: '/assets/js/data/search.json', searchResultTemplate: '<div class="pl-1 pr-1 pl-sm-2 pr-sm-2 pl-lg-4 pr-lg-4 pl-xl-0 pr-xl-0"> <a href="https://narule.github.io{url}">{title}</a><div class="post-meta d-flex flex-column flex-sm-row text-muted mt-1 mb-1"><div class="mr-sm-4"><i class="far fa-folder fa-fw"></i>{categories}</div><div><i class="fa fa-tag fa-fw"></i>{tags}</div></div><p>{snippet}</p></div>', noResultsText: '<p class="mt-5">Oops! No result founds.</p>' }); </script>
